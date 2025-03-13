@@ -1,0 +1,79 @@
+{
+    "faucetPK": "f2ca1bb6c7e907d06dafe4687e579fce76b37e4e93b7605022da52e6ccc26fd2",
+    "nets": [
+        {
+            "descr": "ethereum mainnet",
+            "disabled": true,
+            "net": "eth",
+            "core": "eth",
+            "host": "https://ethereum-rpc.publicnode.com",
+            "token_path": "@root/tokens/eth.json",
+            "confirmCount": 20
+        },
+        {
+            "descr": "ethereum testnet",
+            "disabled": true,
+            "net": "eth",
+            "core": "eth",
+            "host": "http://localhost:8545",
+            "token_path": "@root/tokens/eth_test.json",
+            "confirmCount": 20
+        },
+        {
+            "descr": "base mainnet",
+            "disabled": true,
+            "net": "base",
+            "core": "eth",
+            "host": "wss://base-rpc.publicnode.com",
+            "token_path": "@root/tokens/base.json",
+            "confirmCount": 20
+        },
+        {
+            "descr": "bnb mainnet",
+            "disabled": false,
+            "net": "bnb",
+            "core": "eth",
+            "host": "wss://bsc-rpc.publicnode.com",
+            "token_path": "@root/tokens/bnb.json",
+            "confirmCount": 20
+        },
+        {
+            "descr": "btc testnet",
+            "disabled": true,
+            "net": "btc",
+            "core": "btc",
+            "host": "https://bitcoin-testnet-rpc.publicnode.com",
+            "confirmCount": 5,
+            "testnet": true
+        },
+        {
+            "descr": "btc mainnet",
+            "disabled": true,
+            "net": "btc",
+            "core": "btc",
+            "host": "https://bitcoin-rpc.publicnode.com",
+            "confirmCount": 2,
+            "testnet": false
+        },
+        {
+            "descr": "tron mainnet",
+            "disabled": true,
+            "net": "trx",
+            "core": "trx",
+            "token_path": "@root/tokens/trx.json",
+            "fullNode": "https://tron-rpc.publicnode.com",
+            "solidityNode": "https://tron-solidity-rpc.publicnode.com",
+            "eventServer": "https://tron-evm-rpc.publicnode.com",
+            "confirmCount": 20
+        },
+        {
+            "descr": "tron shasta testnet earn testcoins https://shasta.tronex.io/",
+            "disabled": true,
+            "net": "trx",
+            "core": "trx",
+            "token_path": "@root/tokens/trx.json",
+            "fullHost": "https://api.shasta.trongrid.io",
+            "confirmCount": 20
+        }
+    ]
+}

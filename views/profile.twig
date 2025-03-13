@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Document</title>
+	</head>
+	<body>
+		<h1>Profile</h1>
+		<nav>
+			<a href="/login">Login</a>
+			<a href="/register">Register</a>
+		</nav>
+
+		<main>
+			id:
+			{{ user.id }}
+			<br>
+			email:
+			{{ user.email }}
+			<br>
+			username:
+			{{ user.username }}
+			<br>
+			allowance:
+			{{ user.allowance }}
+			<br>
+			createdAt:
+			{{ user.createdAt }}
+			<br>
+			updatedAt:
+			{{ user.updatedAt }}
+			<br>
+			bannedAt:
+			{{ user.bannedAt }}
+			<br>
+		</main>
+	</body>
+</html>

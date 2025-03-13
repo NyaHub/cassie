@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ru">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>{{domain.name}}
+			| Тестирование API с шаблонами запросов</title>
+		<style>
+			body {
+				font-family: Arial, sans-serif;
+				margin: 20px;
+				background-color: #f9f9f9;
+				color: #333;
+			}
+			h1,
+			h2 {
+				color: #444;
+			}
+			pre {
+				background: #f4f4f4;
+				padding: 15px;
+				border-radius: 5px;
+				overflow-x: auto;
+				border: 1px solid #ddd;
+			}
+			.template-section {
+				margin-bottom: 20px;
+				padding: 15px;
+				background: #fff;
+				border-radius: 5px;
+				box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+			}
+			.template-section select,
+			.template-section button {
+				margin-right: 10px;
+				padding: 8px 12px;
+				border-radius: 4px;
+				border: 1px solid #ccc;
+				font-size: 14px;
+			}
+			.template-section button {
+				background-color: #007bff;
+				color: white;
+				border: none;
+				cursor: pointer;
+			}
+			.template-section button:hover {
+				background-color: #0056b3;
+			}
+			#requestForm {
+				background: #fff;
+				padding: 20px;
+				border-radius: 5px;
+				box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+				margin-bottom: 20px;
+			}
+			#requestForm label {
+				display: block;
+				margin-bottom: 8px;
+				font-weight: bold;
+				color: #555;
+			}
+			#requestForm input,
+			#requestForm select,
+			#requestForm textarea {
+				width: 100%;
+				padding: 8px;
+				margin-bottom: 15px;
+				border-radius: 4px;
+				border: 1px solid #ccc;
+				font-size: 14px;
+			}
+			#requestForm button {
+				background-color: #28a745;
+				color: white;
+				padding: 10px 20px;
+				border: none;
+				border-radius: 4px;
+				cursor: pointer;
+				font-size: 16px;
+			}
+			#requestForm button:hover {
+				background-color: #218838;
+			}
+			#url {
+				font-family: monospace;
+				background-color: #f8f9fa;
+				border: 1px solid #ddd;
+				padding: 10px;
+				color: #d63384;
+			}
+			#results {
+				background: #fff;
+				padding: 15px;
+				border-radius: 5px;
+				border: 1px solid #ddd;
+				margin-top: 20px;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Тестирование API с шаблонами запросов</h1>
+
+		<!-- Секция для управления шаблонами -->
+		<div class="template-section">
+			<label for="templateSelect">Шаблон:</label>
+			<select id="templateSelect">
+				<option value="">-- Выберите шаблон --</option>
+			</select>
+			<button id="saveTemplate">Сохранить шаблон</button>
+			<button id="deleteTemplate">Удалить шаблон</button>
+			<button id="exportTemplates">Экспорт шаблонов</button>
+		</div>
+
+		<!-- Форма для настройки запроса -->
+		<form id="requestForm">
+			<label for="url">URL:</label>
+			<input type="text" id="url" name="url" value="https://jsonplaceholder.typicode.com/posts" required>
+			<br>
+
+			<label for="method">Метод:</label>
+			<select id="method" name="method">
+				<option value="GET">GET</option>
+				<option value="POST">POST</option>
+				<option value="PUT">PUT</option>
+				<option value="DELETE">DELETE</option>
+			</select>
+			<br>
+
+			<label for="params">Параметры (JSON):</label>
+			<textarea id="params" name="params" rows="4" cols="50">{ "userId": 1 }</textarea>
+			<br>
+
+			<label for="comment">Комментарий к шаблону:</label>
+			<textarea id="comment" name="comment" rows="2" cols="50"></textarea>
+			<br>
+
+			<button type="submit">Выполнить запрос</button>
+		</form>
+
+		<h2>Результат:</h2>
+		<pre id="results"></pre>
+
+		<script src="/js/test.js"></script>
+	</body>
+</html>
