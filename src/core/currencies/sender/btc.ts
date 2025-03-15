@@ -152,13 +152,11 @@ export class BTCWithdraw extends EventEmitter {
     }
 
     public setFaucet(faucet: Address) {
-        console.log(faucet)
         this.faucet = faucet
     }
 
     constructor(faucet: Address, core: BitcoinCore, net: string) {
         super()
-        console.log(faucet)
         this.faucet = faucet
         this.core = core
 

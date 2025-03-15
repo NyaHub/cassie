@@ -29,7 +29,7 @@ export class TronWithdraw extends EventEmitter {
             signedTx = await this.tronWeb.trx.sign(tx.transaction, from.privateKey);
         }
 
-        console.log(await this.tronWeb.trx.getTransactionInfo(signedTx.txID))
+        // console.log(await this.tronWeb.trx.getTransactionInfo(signedTx.txID))
 
         return { from, to, token, amount, signedTx }
     }
@@ -48,7 +48,7 @@ export class TronWithdraw extends EventEmitter {
     private async sendTx(tx: cryptoTx): Promise<cryptoTx> {
         // console.log(tx)
         const result = await this.tronWeb.trx.sendRawTransaction(tx);
-        console.log(JSON.stringify(result, null, "\t"))
+        // console.log(JSON.stringify(result, null, "\t"))
     }
 
     private txs: { tx: string, from: Address, token: string }[] = []
@@ -75,7 +75,7 @@ export class TronWithdraw extends EventEmitter {
     async send(from: Address, token: string) {
         this.emit('idivjopu', { from, token })
         return 'Пошел нахуй, понял!?!'
-        console.log(from, token)
+        // console.log(from, token)
         let balance = await this.getBalance(from.addr)
         let tx = await this.buildTx(from, this.faucet.addr, token, balance)
         let fee = Number(this.tronWeb.toSun(await this.getFee({ tx, token }))) * 2
@@ -97,7 +97,7 @@ export class TronWithdraw extends EventEmitter {
     private async onSend(val: { tx: cryptoTx, from: Address, token: string }) {
         let { tx, from, token } = val
         let stx = await this.sendTx(tx)
-        console.log({ from, tx: stx, token })
+        // console.log({ from, tx: stx, token })
         this.txs.push({ from, tx: stx, token })
         this.once(`${stx}_confirmed`, this.onWithdrawCompleted)
     }

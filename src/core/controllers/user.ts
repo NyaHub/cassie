@@ -1,27 +1,12 @@
-import { IUser, IUserEdit, User, Allowance, DefaultUser, Domain, Promo } from "../../database/index"
+import { User, Domain, Promo, Ticket } from "../../database/index"
 import bcrypt from "bcrypt"
 import { Session } from "../../libs/session"
 import { createApiKey, genPassword } from "../../utils"
 import { IntError } from "../../routes/api"
+import { Allowance, DefaultUser, IUser, IUserEdit } from "../../types"
+import { db2interface } from "../../type.conv"
 
 export class UserController {
-    // convert db model to interface IUser
-    static db2interface(u: User): IUser {
-        return {
-            id: u.id,
-            email: u.email,
-            username: u.username,
-            allowance: u.allowance,
-            createdAt: u.createdAt,
-            updatedAt: u.updatedAt,
-            bannedAt: u.bannedAt,
-            balances: u.balances,
-            apitoken: u.apitoken,
-            domain: u.Domain?.domain,
-            sitename: u.Domain?.name,
-            activated: u.Activated?.id
-        }
-    }
 
     // register new user by admin
     async registerFromAdmin(email: string, login: string): Promise<IUser & { password: string }> {
@@ -33,7 +18,7 @@ export class UserController {
         })
 
         let ret: IUser & { password: string } = {
-            ...UserController.db2interface(user),
+            ...db2interface.user(user),
             password
         }
 
@@ -53,7 +38,7 @@ export class UserController {
 
         await session.setData({ uuid: user.id })
 
-        return UserController.db2interface(user)
+        return db2interface.user(user)
     }
     // login - apitoken
     async loginByToken(token: string, session: Session, domain: Domain): Promise<{ user: IUser, authToken: string }> {
@@ -73,7 +58,7 @@ export class UserController {
         })
 
         return {
-            user: UserController.db2interface(user),
+            user: db2interface.user(user),
             authToken: session.authtoken
         }
     }
@@ -89,20 +74,20 @@ export class UserController {
 
         await session.setData({ uuid: user.id })
 
-        return UserController.db2interface(user)
+        return db2interface.user(user)
     }
     // get IUser - uuid|self
     async get(uuid: string, who?: IUser): Promise<IUser> {
         let user = await User.findByPk(uuid || who.id, {
             include: [
                 { model: Domain, as: "Domain" },
-                { model: Promo, as: "Activated" }
+                { model: Promo, as: "Activated" },
+                { model: User, as: "referals" },
+                { model: Ticket, as: "Tickets" }
             ]
         })
 
-        console.log(user)
-
-        return user ? UserController.db2interface(user) : DefaultUser
+        return db2interface.user(user ? user : User.build(DefaultUser))
     }
     // change email|uname|password
     async edit(data: IUserEdit, uuid: string): Promise<IUser> {
@@ -149,7 +134,7 @@ export class UserController {
                 { model: Domain, as: "Domain" },
                 { model: Promo, as: "Activated" }
             ]
-        })).map(u => UserController.db2interface(u))
+        })).map(u => db2interface.user(u))
 
         return users
     }

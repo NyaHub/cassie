@@ -1,11 +1,12 @@
 import { Web3 } from "web3";
-import { Addr, IAddress, NetType, NetTypeNames, Tx, Wallet } from "../../database/index";
+import { Addr, Tx, Wallet } from "../../database/index";
 import { Logger } from "../../libs/logger";
 import { Op } from "sequelize";
 import EventEmitter from "node:events";
 import { keccak_256 } from '@noble/hashes/sha3';
 import { EthWithdraw } from "./sender/eth";
 import { Faucets } from "../../libs/cache";
+import { NetType, IAddress } from "../../types";
 
 let getPublicKey: (privKey: bigint | Uint8Array | string, isCompressed?: boolean) => Uint8Array
 let etc: {

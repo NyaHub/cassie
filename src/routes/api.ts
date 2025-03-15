@@ -2,7 +2,7 @@ import { NextFunction, Router, Response } from "express"
 import { AuthRequest } from "../libs/session"
 import { Logger } from "../libs/logger"
 import { UserController } from "../core/controllers/user"
-import { Allowance, File, MessagePreset } from "../database/index"
+import { File, MessagePreset } from "../database/index"
 import { CryptoCore } from "../core/crypto"
 import { ObjectId } from "mongodb"
 import { Coingecko } from "../libs/coingecko"
@@ -14,6 +14,9 @@ import { rootpath } from "../root"
 import { body, matchedData, param, query, validationResult } from "express-validator"
 import { WalletCtrl } from "../core/controllers/wallet"
 import { CFCtrl } from "../core/controllers/domain"
+import EventEmitter from "node:events"
+import { ChatCtrl } from "../core/controllers/chat"
+import { Allowance } from "../types"
 
 // const sup = new FSCache("./sup.json")
 
@@ -30,12 +33,14 @@ export class API {
     private logger: Logger
     private core: CryptoCore
     private coingecko: Coingecko
+    private event: EventEmitter
 
-    constructor(logger: Logger, core: CryptoCore, coingecko: Coingecko) {
+    constructor(logger: Logger, core: CryptoCore, coingecko: Coingecko, event: EventEmitter) {
         this.router = Router()
         this.logger = logger
         this.core = core
         this.coingecko = coingecko
+        this.event = event
 
         // this.enableCFRoutes() // вот тут роуты клауда
 
@@ -45,12 +50,13 @@ export class API {
         this.enableCoreRoutes(core, coingecko) // роуты платежки
         this.enableCoingecko(coingecko) // получение некоторой косметики и цен для крипты
         // this.enablePromo(coingecko) // пара роутов для агрегации промиков и депов
-        // this.enableFile()
+        this.enableFile()
         // this.enableTPPresets()
         // this.enableGambler()
         // this.enableCBRoutes()
         this.walletRoutes()
         this.siteRoutes()
+        this.support()
     }
 
     // enableGambler() {
@@ -72,139 +78,50 @@ export class API {
     //     this.router.get('/me/domains', getAllDomain)
     // }
 
-    // enableFile() {
-    //     const upload = multer({ dest: 'uploads/' })
+    enableFile() {
+        const upload = multer({ dest: 'uploads/' })
 
-    //     this.router.post('/file', upload.single('file'), async function (req, res, next) {
-    //         try {
-    //             let f = await File.create({
-    //                 originalname: req.file.originalname,
-    //                 mimetype: req.file.mimetype,
-    //                 path: req.file.path,
-    //                 size: req.file.size
-    //             })
+        this.router.post('/file', upload.single('file'), async function (req, res, next) {
+            try {
+                let f = await File.create({
+                    originalname: req.file.originalname,
+                    mimetype: req.file.mimetype,
+                    path: req.file.path,
+                    size: req.file.size
+                })
 
-    //             res.send({
-    //                 status: 0,
-    //                 data: f.dataValues
-    //             })
-    //         } catch (error) {
-    //             res.send({
-    //                 status: 1,
-    //                 message: error.message,
-    //                 code: error.code
-    //             })
-    //         }
-    //     })
+                res.send({
+                    status: 0,
+                    data: f.dataValues
+                })
+            } catch (error) {
+                res.send({
+                    status: 1,
+                    message: error.message,
+                    code: error.code
+                })
+            }
+        })
 
-    //     this.router.get('/file/:id', async function (req, res: Response, next) {
-    //         try {
-    //             let file = await File.findByPk(req.params.id)
+        this.router.get('/file/:id', async function (req, res: Response, next) {
+            try {
+                let file = await File.findByPk(req.params.id)
 
 
-    //             // console.log(file)
+                // console.log(file)
 
-    //             if (file) {
-    //                 res.setHeader('content-type', file.dataValues.mimetype)
-    //                 // console.log(fs.readFileSync(file.dataValues.path))
-    //                 return res.sendFile(join(rootpath, file.dataValues.path), console.log)
-    //                 return res.end()
-    //             }
-    //             res.status(404)
-    //         } catch (error) {
-    //             res.status(500)
-    //         }
-    //     })
-    // }
-
-    // enableTPPresets() {
-    //     this.router.get("/presets/all", async (req, res, netx) => {
-    //         try {
-    //             res.send({
-    //                 status: 0,
-    //                 data: await MessagePreset.findAll()
-    //             })
-    //         } catch (error) {
-    //             res.send({
-    //                 status: 1,
-    //                 message: error.message
-    //             })
-    //         }
-    //     })
-    //     this.router.post("/presets/add", async (req, res, netx) => {
-    //         try {
-    //             if (!req.body.text && !req.body.title) {
-    //                 return res.send({
-    //                     status: 1,
-    //                     messge: "args error"
-    //                 })
-    //             }
-
-    //             let text = req.body.text || req.body.title
-    //             let title = req.body.title || text.slice(0, 15) + "..."
-
-    //             let pres = await MessagePreset.create({
-    //                 title,
-    //                 text
-    //             })
-
-    //             res.send({
-    //                 status: 0,
-    //                 data: pres
-    //             })
-    //         } catch (error) {
-    //             res.send({
-    //                 status: 1,
-    //                 message: error.message
-    //             })
-    //         }
-    //     })
-    //     this.router.put("/presets/:id", async (req, res, netx) => {
-    //         try {
-    //             await MessagePreset.update(req.body, { where: { id: req.params.id } })
-    //             res.send({
-    //                 status: 0,
-    //                 data: await MessagePreset.findByPk(req.params.id)
-    //             })
-    //         } catch (error) {
-    //             res.send({
-    //                 status: 1,
-    //                 message: error.message
-    //             })
-    //         }
-    //     })
-    //     this.router.delete("/presets/:id", async (req, res, netx) => {
-    //         try {
-    //             await MessagePreset.destroy({
-    //                 where: {
-    //                     id: req.params.id
-    //                 }
-    //             })
-    //             res.send({
-    //                 status: 0
-    //             })
-    //         } catch (error) {
-    //             res.send({
-    //                 status: 1,
-    //                 message: error.message
-    //             })
-    //         }
-    //     })
-
-    //     this.router.get("/sup/first", async (req, res, next) => {
-    //         res.send({
-    //             status: 0,
-    //             data: sup.get("fmsg")
-    //         })
-    //     })
-    //     this.router.post("/sup/first", async (req, res, next) => {
-    //         sup.set("fmsg", req.body.text)
-    //         res.send({
-    //             status: 0,
-    //             data: sup.get("fmsg")
-    //         })
-    //     })
-    // }
+                if (file) {
+                    res.setHeader('content-type', file.dataValues.mimetype)
+                    // console.log(fs.readFileSync(file.dataValues.path))
+                    return res.sendFile(join(rootpath, file.dataValues.path), console.log)
+                    return res.end()
+                }
+                res.status(404)
+            } catch (error) {
+                res.status(500)
+            }
+        })
+    }
 
     enableCoingecko(coingecko: Coingecko) {
         this.router.get("/coin/all", this.allowance(Allowance.Guest), this.request(coingecko, coingecko.getAllPrices, []))
@@ -657,6 +574,76 @@ export class API {
     //     })
     // }
 
+    support() {
+        let ctrl = new ChatCtrl(this.event)
+
+        this.router.post("/chat/send", this.allowance(Allowance.User),
+            body("message").escape(),
+            this.request(ctrl, ctrl.sendMesage, [
+                "body.ticketId",
+                "v.message",
+                "body.content",
+                "session.cUser"
+            ]))
+        this.router.post("/chat/read", this.allowance(Allowance.User),
+            this.request(ctrl, ctrl.sendMesage, [
+                "body.ticketId",
+                "session.cUser"
+            ]))
+        this.router.get("/chat/:ticId", this.allowance(Allowance.Manager),
+            this.request(ctrl, ctrl.getMessages, [
+                "params.ticId"
+            ]))
+
+        this.router.get("/ticket/all", this.allowance(Allowance.Manager),
+            query("page").isNumeric().optional(),
+            query("per_page").isNumeric().optional(),
+            this.request(ctrl, ctrl.getTickets, [
+                "query.page",
+                "query.per_page",
+                "session.cUser"
+            ]))
+        this.router.get("/ticket/my", this.allowance(Allowance.User),
+            query("page").isNumeric().optional(),
+            query("per_page").isNumeric().optional(),
+            this.request(ctrl, ctrl.getMyTickets, [
+                "query.page",
+                "query.per_page",
+                "session.cUser"
+            ]))
+        this.router.post("/ticket/", this.allowance(Allowance.User),
+            body("description").isLength({ min: 1 }).escape().optional(),
+            this.request(ctrl, ctrl.createTicket, [
+                "v.description",
+                "session.cUser"
+            ]))
+
+        this.router.get("/presets/all", this.allowance(Allowance.Manager), this.request(ctrl, ctrl.getPresets, [
+            "session.cUser"
+        ]))
+        this.router.post("/presets/add", this.allowance(Allowance.Manager),
+            body("text").escape().optional(),
+            body("title").escape().optional(),
+            this.request(ctrl, ctrl.createPreset, [
+                "v.text",
+                "v.title",
+                "session.cUser"
+            ]))
+        this.router.put("/presets/:id", this.allowance(Allowance.Manager),
+            body("text").escape().optional(),
+            body("title").escape().optional(),
+            this.request(ctrl, ctrl.editPreset, [
+                "params.id",
+                "v.text",
+                "v.title",
+                "session.cUser"
+            ]))
+        this.router.delete("/presets/:id", this.allowance(Allowance.Manager), this.request(ctrl, ctrl.deletePreset, [
+            "params.id",
+            "session.cUser"
+        ]))
+    }
+
     enableAccRoutes() {
         const UserCtrl = new UserController()
         this.router.post("/acc/register", this.allowance(Allowance.Guest),
@@ -729,7 +716,7 @@ export class API {
         ]))
     }
     walletRoutes() {
-        let walletCTRL = new WalletCtrl(this.core, this.coingecko)
+        let walletCTRL = new WalletCtrl(this.core, this.coingecko, this.event)
         // async getAllPromo(page: number, per_page: number, user: IUser) {
         this.router.get("/promo/all", this.allowance(Allowance.Manager),
             query("page").isNumeric().optional(),
@@ -904,7 +891,7 @@ export class API {
 
         this.router.get("/wallet/cur", this.request(core, async function () {
             let prices = await coingecko.getAllPrices()
-            return this.getCurrencies().map(v => [v[0], v[1], prices[v[0].split("_")[0].toLowerCase()]?.usd || 0])
+            return this.getCurrencies()
         }, []))
 
         this.router.get("/wallet/:coin/:uhash", this.request(core, core.getAddr, [
@@ -1005,6 +992,7 @@ export class API {
                     messages: [error.message]
                 })
                 this.logger.err(error)
+                console.log(error)
             }
         }).bind(this)
     }
@@ -1018,7 +1006,7 @@ export class API {
             if (req.session.cUser.allowance > minAllowance) {
                 return res.status(403).json({
                     status: 1,
-                    message: "Forbidden!"
+                    messages: "Forbidden!"
                 })
             }
             next()

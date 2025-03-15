@@ -1,9 +1,11 @@
 import axios from "axios"
 import EventEmitter from "events"
-import { CFAcc, DomainStatus, Domain, IUser, Allowance, Promo, User } from "../../database"
+import { CFAcc, Domain, User } from "../../database"
 import { Logger } from "../../libs/logger"
 import { CloudflareAccount, CloudflareAPI } from "../../libs/cloudflare"
 import { IntError } from "../../routes/api"
+import { DomainStatus, IUser, Allowance } from "../../types"
+import { db2interface } from "../../type.conv"
 
 interface AddDomainResult {
     domain: string,
@@ -18,16 +20,6 @@ export class CFCtrl {
     constructor(logger: Logger) {
         this.logger = logger
         this.manager = new CloudflareManager(this.logger.getLogger("CloudflareManager"))
-    }
-
-    static domaindb2interface(d: Domain) {
-        return {
-            id: d.id,
-            status: DomainStatus[d.status],
-            domain: d.domain,
-            nsList: d.nsList,
-            name: d.name
-        }
     }
 
     async addDomain(domain: string, name: string, owner: IUser) {
@@ -69,7 +61,7 @@ export class CFCtrl {
 
     async get(id: string) {
         let d = await Domain.findByPk(id)
-        return CFCtrl.domaindb2interface(d)
+        return db2interface.domain(d)
     }
 
     async getAllDomain(page: number, per_page: number, user: IUser) {
@@ -90,7 +82,7 @@ export class CFCtrl {
             case Allowance.System:
             case Allowance.Owner: {
                 let max = await Domain.count()
-                let domain = (await Domain.findAll(opts)).map(CFCtrl.domaindb2interface)
+                let domain = (await Domain.findAll(opts)).map(e => db2interface.domain(e))
 
                 return {
                     domain,
@@ -100,7 +92,7 @@ export class CFCtrl {
             }
             case Allowance.Admin: {
                 let max = await Domain.count({ where: { OwnerId: user.id } })
-                let domain = (await Domain.findAll({ where: { OwnerId: user.id }, ...opts })).map(CFCtrl.domaindb2interface)
+                let domain = (await Domain.findAll({ where: { OwnerId: user.id }, ...opts })).map(e => db2interface.domain(e))
                 return {
                     domain,
                     count: max,
@@ -110,7 +102,7 @@ export class CFCtrl {
             case Allowance.Manager: {
                 let wdom = await User.findByPk(user.id, { include: { model: Domain, as: "Domain" } })
                 let max = await Domain.count({ where: { OwnerId: wdom.Domain.OwnerId } })
-                let domain = (await Domain.findAll({ where: { OwnerId: wdom.Domain.OwnerId }, ...opts })).map(CFCtrl.domaindb2interface)
+                let domain = (await Domain.findAll({ where: { OwnerId: wdom.Domain.OwnerId }, ...opts })).map(e => db2interface.domain(e))
                 return {
                     domain,
                     count: max,

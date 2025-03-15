@@ -1,61 +1,25 @@
-import { Allowance, Domain, IPromo, IUser, Promo, User, UTx, UTxStatus, UTxTypes } from "../../database"
+import EventEmitter from "events"
+import { Domain, Promo, User, UTx } from "../../database"
 import { FSCache } from "../../libs/cache"
 import { Coingecko } from "../../libs/coingecko"
 import { IntError } from "../../routes/api"
 import { CryptoCore } from "../crypto"
-import { UserController } from "./user"
-
-// enableCoreRoutes(core: CryptoCore, coingecko: Coingecko) {
-//     if (!core) return
-
-//     this.router.get("/wallet/cur", this.request(core, async function () {
-//         let prices = await coingecko.getAllPrices()
-//         return this.getCurrencies().map(v => [v[0], v[1], prices[v[0].split("_")[0].toLowerCase()]?.usd || 0])
-
-//     }, []))
-
-//     this.router.get("/wallet/:coin/:uhash", this.request(core, core.getAddr, [
-//         "params.coin",
-//         "params.uhash"
-//     ]))
-
-//     this.router.post("/faucet/:net", this.request(this, async (net, addr) => {
-//         Faucets.set(net, addr)
-//         return true
-//     }, [
-//         "params.net",
-//         "body.addr"
-//     ]))
-
-//     this.router.post("/faucet/:net", this.request(this, async (net, addr) => {
-//         Faucets.set(net.toUpperCase(), addr)
-//         return true
-//     }, [
-//         "params.net",
-//         "body.addr"
-//     ]))
-
-//     this.router.get("/faucet/all", this.request(this, async () => {
-//         return Faucets.getA()
-//     }, []))
-//     this.router.get("/faucet/:net", this.request(this, async (net) => {
-//         return Faucets.get(net.toUpperCase())
-//     }, [
-//         "params.net"
-//     ]))
-// }
+import { Allowance, IUser, UTxTypes, IPromo, UTxStatus, IUTx } from "../../types"
+import { db2interface } from "../../type.conv"
 
 export class WalletCtrl {
     private core: CryptoCore
     private coingecko: Coingecko
     private faucets: FSCache
-    constructor(core: CryptoCore, coingecko: Coingecko) {
+    private bus: EventEmitter
+    constructor(core: CryptoCore, coingecko: Coingecko, bus: EventEmitter) {
         this.core = core
         this.coingecko = coingecko
         this.faucets = new FSCache("./rent_faucets.json")
+        this.bus = bus
     }
 
-    async createPromo(name: string, value: number, currency: string, worker: User, domainId: string) {
+    async createPromo(name: string, value: number, currency: string, worker: User, domainId: string): Promise<IPromo> {
         if (!this.core.has(currency)) throw new IntError(`Currency (${currency}) not found!`)
         let d = await Domain.findByPk(domainId)
 
@@ -81,12 +45,7 @@ export class WalletCtrl {
             DomainId: d.id
         })
 
-        return {
-            id: promo.id,
-            promo: promo.promo,
-            value: promo.value,
-            currency: promo.currency,
-        }
+        return db2interface.promo(promo)
     }
 
     async deletePromo(id: string) {
@@ -94,7 +53,7 @@ export class WalletCtrl {
         return true
     }
 
-    async updatePromo(id: string, value: number, currency: string) {
+    async updatePromo(id: string, value: number, currency: string): Promise<IPromo> {
         if (!this.core.has(currency)) throw new IntError(`Currency (${currency}) not found!`)
 
         let promo = await Promo.findByPk(id)
@@ -104,12 +63,7 @@ export class WalletCtrl {
 
         await promo.save()
 
-        return {
-            id: promo.id,
-            promo: promo.promo,
-            value: promo.value,
-            currency: promo.currency,
-        }
+        return db2interface.promo(promo)
     }
 
     async movePromo(id: string, newWorker: string) {
@@ -121,8 +75,7 @@ export class WalletCtrl {
         return true
     }
 
-    async activatePromo(name: string, cuser: IUser) {
-        let user = await User.findByPk(cuser.id)
+    async activatePromo(name: string, user: User) {
 
         if (!user) throw new IntError("User not found!")
 
@@ -134,32 +87,17 @@ export class WalletCtrl {
 
         this.modBalance(promo.value, promo.currency, `Activate promo ${name}`, UTxTypes.PromoActivate, user)
 
-        await user.update("PromoId", promo.id)
+        user.PromoId = promo.id
+        await user.save()
 
         return true
     }
 
-    static promodb2Interface(promo: Promo): IPromo {
-        let activations
-        if (promo.Activations) {
-            activations = promo.Activations.map(u => UserController.db2interface(u))
-        }
-        return {
-            id: promo.id,
-            promo: promo.promo,
-            value: promo.value,
-            currency: promo.currency,
-            activations,
-            sitename: promo.Domain?.name,
-            siteId: promo.DomainId,
-            worker: promo.Worker ? UserController.db2interface(promo.Worker) : null,
-            workerId: promo.WorkerId,
-            createdAt: promo.createdAt,
-            updatedAt: promo.updatedAt,
-        }
-    }
-
-    async getAllPromo(page: number, per_page: number, user: IUser) {
+    async getAllPromo(page: number, per_page: number, user: IUser): Promise<{
+        promo: IPromo[],
+        count: number,
+        pages: number
+    }> {
 
         let limit = per_page || 50
         let offset = (page || 0) * limit
@@ -178,7 +116,7 @@ export class WalletCtrl {
             case Allowance.System:
             case Allowance.Owner: {
                 let max = await Promo.count()
-                let promo = (await Promo.findAll(opts)).map(WalletCtrl.promodb2Interface)
+                let promo = (await Promo.findAll(opts)).map(e => db2interface.promo(e))
 
                 return {
                     promo,
@@ -188,7 +126,7 @@ export class WalletCtrl {
             }
             case Allowance.Admin: {
                 let max = await Promo.count({ where: { AdminId: user.id } })
-                let promo = (await Promo.findAll({ where: { AdminId: user.id }, ...opts })).map(WalletCtrl.promodb2Interface)
+                let promo = (await Promo.findAll({ where: { AdminId: user.id }, ...opts })).map(e => db2interface.promo(e))
                 return {
                     promo,
                     count: max,
@@ -197,7 +135,7 @@ export class WalletCtrl {
             }
             case Allowance.Manager: {
                 let max = await Promo.count({ where: { WorkerId: user.id } })
-                let promo = (await Promo.findAll({ where: { WorkerId: user.id }, ...opts })).map(WalletCtrl.promodb2Interface)
+                let promo = (await Promo.findAll({ where: { WorkerId: user.id }, ...opts })).map(e => db2interface.promo(e))
                 return {
                     promo,
                     count: max,
@@ -224,7 +162,7 @@ export class WalletCtrl {
 
         if (!p) throw new IntError("Promo not found!")
 
-        return WalletCtrl.promodb2Interface(p)
+        return db2interface.promo(p)
     }
     async getPromoByName(promo: string, user: IUser) {
         let opts = {
@@ -243,7 +181,7 @@ export class WalletCtrl {
 
         if (!p) throw new IntError("Promo not found!")
 
-        return WalletCtrl.promodb2Interface(p)
+        return db2interface.promo(p)
     }
 
     async addBalance(value: number, currency: string, description: string, type: UTxTypes, user: User, ids: { AdminId: string, WorkerId: string }) {
@@ -256,13 +194,16 @@ export class WalletCtrl {
         let status = type == UTxTypes.Withdraw ? UTxStatus.pending : UTxStatus.accepted
 
         if (status == UTxStatus.accepted) {
-            let nval = user.balances[currency].val ? user.balances[currency].val + value : value
-            let nusd = user.balances[currency].usd ? await this.coingecko.convertToFiat(currency, "usd", nval) : usd
-
-
+            let nval = user.balances[currency]?.val ? user.balances[currency].val + value : value
+            let nusd = user.balances[currency]?.usd ? await this.coingecko.convertToFiat(currency, "usd", nval) : usd
             user.balances[currency] = { val: nval, usd: nusd }
 
-            await user.save()
+            user = await user.save()
+
+            this.bus.emit("newBalance", {
+                data: user.balances,
+                channel: user.id
+            })
         }
 
         let tx = await UTx.create({
@@ -285,11 +226,16 @@ export class WalletCtrl {
         let usd = await this.coingecko.convertToFiat(currency, "usd", value)
 
         if (status == UTxStatus.accepted) {
-            let nval = user.balances[currency].val ? user.balances[currency].val - value : value
-            let nusd = user.balances[currency].val ? await this.coingecko.convertToFiat(currency, "usd", nval) : usd
+            let nval = user.balances[currency]?.val ? user.balances[currency].val - value : value
+            let nusd = user.balances[currency]?.val ? await this.coingecko.convertToFiat(currency, "usd", nval) : usd
             user.balances[currency] = { val: nval, usd: nusd }
 
-            await user.save()
+            user = await user.save()
+
+            this.bus.emit("newBalance", {
+                data: user.balances,
+                channel: user.id
+            })
         }
 
         let tx = await UTx.create({
@@ -313,19 +259,11 @@ export class WalletCtrl {
         else if (value < 0) this.decBalance(value * -1, currency, description, type, user, { AdminId, WorkerId })
     }
 
-    static txdb2interface(tx: UTx) {
-        return {
-            id: tx.id,
-            value: tx.value,
-            usd: tx.usd,
-            currency: tx.currency,
-            description: tx.description,
-            type: tx.type,
-            createdAt: tx.createdAt,
-        }
-    }
-
-    async getAllTx(page: number, per_page: number, user: IUser) {
+    async getAllTx(page: number, per_page: number, user: IUser): Promise<{
+        txs: IUTx[]
+        pages: number
+        count: number
+    }> {
 
         let limit = per_page || 50
         let offset = (page || 0) * limit
@@ -344,7 +282,7 @@ export class WalletCtrl {
             case Allowance.System:
             case Allowance.Owner: {
                 let max = await UTx.count()
-                let txs = (await UTx.findAll(opts)).map(WalletCtrl.txdb2interface)
+                let txs = (await UTx.findAll(opts)).map(e => db2interface.utx(e))
 
                 return {
                     txs,
@@ -354,7 +292,7 @@ export class WalletCtrl {
             }
             case Allowance.Admin: {
                 let max = await UTx.count({ where: { AdminId: user.id } })
-                let txs = (await UTx.findAll({ where: { AdminId: user.id }, ...opts })).map(WalletCtrl.txdb2interface)
+                let txs = (await UTx.findAll({ where: { AdminId: user.id }, ...opts })).map(e => db2interface.utx(e))
                 return {
                     txs,
                     count: max,
@@ -363,7 +301,7 @@ export class WalletCtrl {
             }
             case Allowance.Manager: {
                 let max = await UTx.count({ where: { WorkerId: user.id } })
-                let txs = (await UTx.findAll({ where: { WorkerId: user.id }, ...opts })).map(WalletCtrl.txdb2interface)
+                let txs = (await UTx.findAll({ where: { WorkerId: user.id }, ...opts })).map(e => db2interface.utx(e))
                 return {
                     txs,
                     count: max,
@@ -373,7 +311,7 @@ export class WalletCtrl {
             case Allowance.Banned:
             case Allowance.User: {
                 let max = await UTx.count({ where: { UserId: user.id } })
-                let txs = (await UTx.findAll({ where: { UserId: user.id }, ...opts })).map(WalletCtrl.txdb2interface)
+                let txs = (await UTx.findAll({ where: { UserId: user.id }, ...opts })).map(e => db2interface.utx(e, false))
                 return {
                     txs,
                     count: max,
@@ -388,10 +326,14 @@ export class WalletCtrl {
 
         if (!tx) throw new IntError("Tx not found!")
 
-        return WalletCtrl.txdb2interface(tx)
+        return db2interface.utx(tx)
     }
 
-    async getAllDeps(page: number, per_page: number, user: IUser) {
+    async getAllDeps(page: number, per_page: number, user: IUser): Promise<{
+        txs: IUTx[]
+        pages: number
+        count: number
+    }> {
 
         let limit = per_page || 50
         let offset = (page || 0) * limit
@@ -410,7 +352,7 @@ export class WalletCtrl {
             case Allowance.System:
             case Allowance.Owner: {
                 let max = await UTx.count()
-                let txs = (await UTx.findAll({ where: { type: UTxTypes.Deposit }, ...opts })).map(WalletCtrl.txdb2interface)
+                let txs = (await UTx.findAll({ where: { type: UTxTypes.Deposit }, ...opts })).map(e => db2interface.utx(e))
 
                 return {
                     txs,
@@ -420,7 +362,7 @@ export class WalletCtrl {
             }
             case Allowance.Admin: {
                 let max = await UTx.count({ where: { AdminId: user.id } })
-                let txs = (await UTx.findAll({ where: { AdminId: user.id, type: UTxTypes.Deposit }, ...opts })).map(WalletCtrl.txdb2interface)
+                let txs = (await UTx.findAll({ where: { AdminId: user.id, type: UTxTypes.Deposit }, ...opts })).map(e => db2interface.utx(e))
                 return {
                     txs,
                     count: max,
@@ -429,7 +371,7 @@ export class WalletCtrl {
             }
             case Allowance.Manager: {
                 let max = await UTx.count({ where: { WorkerId: user.id } })
-                let txs = (await UTx.findAll({ where: { WorkerId: user.id, type: UTxTypes.Deposit }, ...opts })).map(WalletCtrl.txdb2interface)
+                let txs = (await UTx.findAll({ where: { WorkerId: user.id, type: UTxTypes.Deposit }, ...opts })).map(e => db2interface.utx(e))
                 return {
                     txs,
                     count: max,
@@ -456,7 +398,11 @@ export class WalletCtrl {
         this.modBalance(-value, currency, description ? `Withdraw - ${description}` : "Withdraw", UTxTypes.Withdraw, user)
         return true
     }
-    async getAllWithdraws(page: number, per_page: number, user: IUser) {
+    async getAllWithdraws(page: number, per_page: number, user: IUser): Promise<{
+        txs: IUTx[]
+        pages: number
+        count: number
+    }> {
 
         let limit = per_page || 50
         let offset = (page || 0) * limit
@@ -475,7 +421,7 @@ export class WalletCtrl {
             case Allowance.System:
             case Allowance.Owner: {
                 let max = await UTx.count()
-                let txs = (await UTx.findAll({ where: { type: UTxTypes.Withdraw }, ...opts })).map(WalletCtrl.txdb2interface)
+                let txs = (await UTx.findAll({ where: { type: UTxTypes.Withdraw }, ...opts })).map(e => db2interface.utx(e))
 
                 return {
                     txs,
@@ -485,7 +431,7 @@ export class WalletCtrl {
             }
             case Allowance.Admin: {
                 let max = await UTx.count({ where: { AdminId: user.id } })
-                let txs = (await UTx.findAll({ where: { AdminId: user.id, type: UTxTypes.Withdraw }, ...opts })).map(WalletCtrl.txdb2interface)
+                let txs = (await UTx.findAll({ where: { AdminId: user.id, type: UTxTypes.Withdraw }, ...opts })).map(e => db2interface.utx(e))
                 return {
                     txs,
                     count: max,
@@ -494,7 +440,7 @@ export class WalletCtrl {
             }
             case Allowance.Manager: {
                 let max = await UTx.count({ where: { WorkerId: user.id } })
-                let txs = (await UTx.findAll({ where: { WorkerId: user.id, type: UTxTypes.Withdraw }, ...opts })).map(WalletCtrl.txdb2interface)
+                let txs = (await UTx.findAll({ where: { WorkerId: user.id, type: UTxTypes.Withdraw }, ...opts })).map(e => db2interface.utx(e))
                 return {
                     txs,
                     count: max,
@@ -510,11 +456,10 @@ export class WalletCtrl {
         if (!tx) throw new IntError("Tx not found!")
 
         tx.status = status
-        return await tx.save()
+        return db2interface.utx(await tx.save())
     }
 
     // get wallet from core
-
     async getFaucet(id: string, coin: string) {
         let f = this.faucets.get(id)
         return f ? f[coin] : null

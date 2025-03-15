@@ -1,17 +1,18 @@
 import { EventEmitter } from "node:events";
 import { Logger } from "../../libs/logger";
-import { Addr, IAddress, NetType, Tx, Wallet } from "../../database/index";
+import { Addr, Tx, Wallet } from "../../database/index";
 import { Op } from "sequelize";
 import { TronWeb } from "tronweb";
 import { keccak_256 } from '@noble/hashes/sha3';
 import { base58, sha256 } from '../../utils'
 import Web3 from "web3";
 import { TronWithdraw } from "./sender/tron";
+import { NetType, IAddress } from "../../types";
 
 
 // declared only its from noble secp256k1
-declare let getPublicKey: (privKey: bigint | Uint8Array | string, isCompressed?: boolean) => Uint8Array
-declare let etc: {
+let getPublicKey: (privKey: bigint | Uint8Array | string, isCompressed?: boolean) => Uint8Array
+let etc: {
     hexToBytes: (hex: string) => Uint8Array
 }
 
@@ -153,7 +154,9 @@ export class TronCore {
         etc = imp.etc
         this.faucet = TronCore.generateWallet(faucetPK)
         await this.connectContracts()
-        this.height = (await this.tronWeb.trx.getCurrentBlock()).block_header.raw_data.number
+        try {
+            this.height = (await this.tronWeb.trx.getCurrentBlock()).block_header.raw_data.number
+        } catch (e) { }
         this.checkNewBlocks()
         this.cron()
         this.sender = new TronWithdraw(this.faucet, this.tronWeb, this)

@@ -1,4 +1,3 @@
-import { Addr, IAddress, Tx } from "../database/index";
 import fs from "node:fs"
 import { Logger } from "../libs/logger";
 import EventEmitter from "node:events";
@@ -6,6 +5,7 @@ import { join } from "node:path";
 import { EtherCore } from "./currencies/eth";
 import { BitcoinCore } from "./currencies/btc";
 import { TronCore } from "./currencies/tron";
+import { IAddress } from "../types";
 
 export type Address = {
     addr: string,
@@ -134,7 +134,10 @@ export class CryptoCore {
     }
 
     public getCurrencies() {
-        return this.cursFormated
+        return {
+            formated: this.cursFormated || {},
+            normal: this.cursOut
+        }
     }
 
     public has(cur: string) {

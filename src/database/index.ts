@@ -1,9 +1,8 @@
-import { Sequelize, DataTypes, Model, ForeignKey, NonAttribute, CreationOptional, Optional } from "sequelize";
+import { Sequelize, DataTypes, Model, ForeignKey, NonAttribute, CreationOptional } from "sequelize";
 import bcrypt from "bcrypt"
 import { Logger } from "../libs/logger";
-import { createApiKey, createPromo, createToken, ZERO_KEY } from "../utils";
-
-type Balance = { val: number, usd: number }
+import { createApiKey, createPromo } from "../utils";
+import { Allowance, Balance, DomainStatus, UTxTypes, UTxStatus } from "../types";
 
 export let sequelize: Sequelize = null
 export class Wallet extends Model {
@@ -52,10 +51,17 @@ export class User extends Model {
     declare apitoken: string
     declare password: string
     declare bannedAt: Date
+    declare ref: string
+
+    declare referals: NonAttribute<User[]>
+    declare refCode: ForeignKey<User["ref"]>
 
     declare Domains: NonAttribute<Domain[]>
     declare Domain: NonAttribute<Domain>
     declare DomainId: ForeignKey<Domain["id"]>
+
+    declare Tickets: NonAttribute<Ticket[]>
+    declare Messages: NonAttribute<Message[]>
 
     declare Txs: NonAttribute<UTx[]>
 
@@ -141,6 +147,12 @@ export class MessagePreset extends Model {
     declare id: CreationOptional<string>
     declare text: string
     declare title: string
+
+    declare Owner: NonAttribute<User>
+    declare OwnerId: ForeignKey<User["id"]>
+
+    declare createdAt: CreationOptional<Date>
+    declare updatedAt: CreationOptional<Date>
 }
 export class UTx extends Model {
     declare id: CreationOptional<string>
@@ -164,7 +176,38 @@ export class UTx extends Model {
     declare updatedAt: CreationOptional<Date>
     declare deletedAt: CreationOptional<Date>
 }
+export class Message extends Model {
+    declare id: CreationOptional<string>
+    declare message: string
+    declare content: any
+    declare readed: boolean
 
+    declare Ticket: NonAttribute<Ticket>
+    declare TicketId: ForeignKey<Ticket["id"]>
+
+    declare From: NonAttribute<User>
+    declare FromId: ForeignKey<User["id"]>
+
+    declare createdAt: CreationOptional<Date>
+    declare updatedAt: CreationOptional<Date>
+    declare deletedAt: CreationOptional<Date>
+}
+export class Ticket extends Model {
+    declare id: CreationOptional<string>
+    declare description: string
+
+    declare Messages: NonAttribute<Message[]>
+
+    declare User: NonAttribute<User>
+    declare UserId: ForeignKey<User["id"]>
+
+    declare Admin: NonAttribute<User>
+    declare AdminId: ForeignKey<User["id"]>
+
+    declare createdAt: CreationOptional<Date>
+    declare updatedAt: CreationOptional<Date>
+    declare deletedAt: CreationOptional<Date>
+}
 export function initdb(logger: Logger) {
     sequelize = new Sequelize({
         storage: "./db.sqlite",
@@ -236,7 +279,11 @@ export function initdb(logger: Logger) {
         },
         apitoken: {
             type: DataTypes.STRING,
-            defaultValue: createApiKey()
+            defaultValue: createApiKey
+        },
+        ref: {
+            type: DataTypes.STRING,
+            defaultValue: () => crypto.randomUUID().split("-")[4]
         }
     }, seqParanoid)
 
@@ -244,7 +291,7 @@ export function initdb(logger: Logger) {
         id: seqID,
         promo: {
             type: DataTypes.STRING,
-            defaultValue: createPromo()
+            defaultValue: createPromo
         },
         value: {
             type: DataTypes.STRING,
@@ -316,6 +363,35 @@ export function initdb(logger: Logger) {
         title: DataTypes.STRING
     }, seqNormal)
 
+    Message.init({
+        id: seqID,
+        message: DataTypes.TEXT,
+        content: {
+            type: DataTypes.JSON,
+            defaultValue: {}
+        },
+        readed: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: false
+        }
+    }, seqParanoid)
+    Ticket.init({
+        id: seqID,
+        description: DataTypes.STRING
+    }, seqParanoid)
+
+    Ticket.hasMany(Message, { foreignKey: "TicketId", as: "Messages" })
+    Message.belongsTo(Ticket, { foreignKey: "TicketId", as: "Ticket" })
+
+    User.hasMany(Message, { foreignKey: "FromId", as: "Messages" })
+    Message.belongsTo(User, { foreignKey: "FromId", as: "From" })
+
+    User.hasMany(Ticket, { foreignKey: "UserId", as: "Tickets" })
+    Ticket.belongsTo(User, { foreignKey: "UserId", as: "User" })
+
+    User.hasMany(Ticket, { foreignKey: "AdminId", as: "AdminTickets" })
+    Ticket.belongsTo(User, { foreignKey: "AdminId", as: "Admin" })
+
     Wallet.hasMany(Addr)
     Addr.belongsTo(Wallet)
 
@@ -349,100 +425,12 @@ export function initdb(logger: Logger) {
     User.hasMany(UTx, { foreignKey: "WorkerId", as: "WorkerTxs" })
     UTx.belongsTo(User, { foreignKey: "WorkerId", as: "Worker" })
 
-}
+    User.hasMany(MessagePreset, { foreignKey: "OwnerId", as: "Presets" })
+    MessagePreset.belongsTo(User, { foreignKey: "OwnerId", as: "Owner" })
 
-export enum NetType {
-    ETH,
-    BTC,
-    MATIC,
-    TRX,
-    BNB,
-    BSC,
-    TRON
-}
-export const NetTypeNames = [
-    "ETH",
-    "BTC",
-    "MATIC",
-    "TRX",
-    "BNB",
-    "BSC"
-]
-export enum Allowance {
-    System = -1, // системный уровень, на всякий случай, логин через форму тут зарежем
-    // логин для системного юзера/ов будет только по токену
-    Owner, // владелец площадки
-    Admin, // арендатор
-    Manager, // работники площадки со стороны арендатора
-    User, // пользователи
-    Guest, // гости
-    Banned // забаненые юзеры
-    // если забаненый залогинится, то его кинет на страничку ошибки
-    // у остальных такого не будет, ну тут логична причина
-}
+    // User.hasMany(User, { foreignKey: "refCode", as: "referals" })
+    User.belongsTo(User, { foreignKey: "refCode", as: "referals", targetKey: "ref" })
 
-export interface IUser {
-    id: string,
-    email: string,
-    username: string,
-    allowance: Allowance,
-    createdAt: Date,
-    updatedAt: Date,
-    bannedAt: Date, // timestamp
-    balances: object,
-    apitoken: string,
-    domain?: string,
-    sitename?: string,
-    activated?: string
-}
-export interface IUserEdit {
-    email?: string,
-    username?: string,
-    password?: string
-}
-export const DefaultUser: IUser = {
-    id: "",
-    email: "",
-    username: "Guest",
-    allowance: Allowance.Guest,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    bannedAt: null,
-    balances: {},
-    apitoken: ZERO_KEY
-}
-export interface IAddress {
-    id: string,
-    addr: string
-}
-export enum DomainStatus {
-    initializing,
-    pending,
-    active,
-}
-export enum UTxTypes {
-    Bet,
-    Win,
-    Deposit,
-    Withdraw,
-    PromoActivate
-}
-export enum UTxStatus {
-    pending,
-    accepted,
-    declined
-}
-
-export interface IPromo {
-    id: string
-    promo: string
-    value: number
-    currency: string
-    activations: IUser[]
-    sitename: string
-    siteId: string
-    worker?: IUser
-    workerId: string
-    createdAt: Date
-    updatedAt: Date
+    // declare referals: NonAttribute<User[]>
+    // declare refCode: ForeignKey<User["ref"]>
 }

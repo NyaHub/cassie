@@ -7,21 +7,21 @@ import "dotenv/config"
 import { setup as inittg } from "./routes/tg"
 import twig from "twig"
 // eq dependencies
-import { sequelize, initdb, Domain } from "./database/index"
+import { sequelize, initdb, Domain, User } from "./database/index"
 import { CryptoCore } from "./core/crypto"
 import { API } from "./routes/api"
-import { AuthRequest, session } from "./libs/session"
+import { session } from "./libs/session"
 import { CLITransport, FileTransport, Logger } from "./libs/logger"
 import { createPk, getOrCreateCFGVar } from "./utils"
 import EventEmitter from "node:events"
 import { join } from "node:path"
-import axios from "axios"
 import { Coingecko } from "./libs/coingecko"
 import { createServer } from "node:http"
 
 import { rootpath } from "./root"
 import { AuthSockRequest, initSocket } from "./core/controllers/socket"
 import fs from "node:fs"
+import { db2interface } from "./type.conv"
 
 (async () => {
     const logger = new Logger({
@@ -126,22 +126,45 @@ import fs from "node:fs"
         next()
     })
     app.use(session(session_pk, "session", logger.getLogger("libs/session.ts")))
-    app.use(initSocket(eventBus, server))
+    app.use(initSocket(eventBus, server, logger.getLogger("socker.ts"), { pk: session_pk, name: "session", }))
 
-    const api = new API(logger.getLogger("routes/api.ts"), core, coingecko)
+    const api = new API(logger.getLogger("routes/api.ts"), core, coingecko, eventBus)
 
     app.use("/api/v1", api.router)
+
+    app.get("/ref/:ref", async (req: AuthSockRequest, res) => {
+        if (req.session.isAuth) return res.redirect("/")
+        let refu = await User.findOne({
+            where: {
+                ref: req.params.ref
+            }
+        })
+        if (refu) {
+            res.cookie("_rrr", `${refu.id}|${refu.ref}`, {
+                maxAge: Date.now() * 2
+            })
+            res.redirect("/register")
+        }
+        res.redirect("/")
+    })
 
     app.get("/", (req, res) => {
         res.render("index.twig", {})
     })
     app.get("/*", (req: AuthSockRequest, res, next) => {
         if (!fs.existsSync(join(rootpath, 'views', req.path + ".twig"))) return next()
-        res.render(join(rootpath, 'views', req.path + ".twig"), { user: req.session.cUser, domain: req.Domain })
+        let user = db2interface.user(req.session.cUser),
+            domain = db2interface.domain(req.Domain)
+        res.render(join(rootpath, 'views', req.path + ".twig"), {
+            user,
+            domain,
+            userJSON: JSON.stringify(user),
+            domainJSON: JSON.stringify(domain),
+        })
     })
 
-    server.listen(port, "localhost", async () => {
+    server.listen(port, "0.0.0.0", async () => {
         logger.info("App listen on: 0.0.0.0:3000")
-        await sequelize.sync({ alter: !true })
+        await sequelize.sync({ alter: true })
     })
 })()

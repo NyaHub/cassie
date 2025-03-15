@@ -1,15 +1,16 @@
 import { Logger } from "../../libs/logger";
 import { EventEmitter } from 'node:events';
-import { Addr, IAddress, NetType, Tx, Wallet } from "../../database/index";
+import { Addr, Tx, Wallet } from "../../database/index";
 import { base58, sha256 } from '../../utils';
 import axios from "axios";
 import { ripemd160 } from "@noble/hashes/ripemd160";
 import { BTCWithdraw } from "./sender/btc";
 import { Faucets } from "../../libs/cache";
+import { NetType, IAddress } from "../../types";
 
 let testnet = true
-declare let getPublicKey: (privKey: bigint | Uint8Array | string, isCompressed?: boolean) => Uint8Array
-declare let etc: {
+let getPublicKey: (privKey: bigint | Uint8Array | string, isCompressed?: boolean) => Uint8Array
+let etc: {
     // hexToBytes: (hex: string) => Uint8Array
     bytesToHex: (bytes: Uint8Array) => string
     // concatBytes: (...arrs: Uint8Array[]) => Uint8Array

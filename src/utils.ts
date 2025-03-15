@@ -5,6 +5,7 @@ import axios from "axios"
 
 export const APIKEYLEAD = "K"
 export const ZERO_KEY = APIKEYLEAD + "00000000000000000000000000000000-00000000000000000000000000000000"
+export const ZERO_ID = '00000000-0000-0000-0000-000000000000'
 
 export function sha256(str): Buffer {
     return crypto.createHash("sha256").update(str).digest()

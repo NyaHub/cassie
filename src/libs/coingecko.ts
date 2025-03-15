@@ -1,7 +1,6 @@
 
 import axios from "axios"
 import { Logger } from "./logger"
-import { CryptoCore } from "../core/crypto"
 import { FSCache } from "./cache"
 import { IntError } from "../routes/api"
 
@@ -123,14 +122,14 @@ export class Coingecko {
 
     // yep btc is fiat...
     async convertToFiat(from: string, to: string, value: number) {
-        if (this.has(from)) { throw new IntError("From currency not found!") }
-        if (["eur", "btc", "usd"].includes(to)) { throw new IntError("To currency not found!") }
+        if (!this.has(from)) { throw new IntError("From currency not found!") }
+        if (!["eur", "btc", "usd"].includes(to)) { throw new IntError("To currency not found!") }
 
         return (await this.getPriceByOurName(from))[to] * value
     }
     async convertFromFiat(from: string, to: string, value: number) {
-        if (["eur", "btc", "usd"].includes(from)) { throw new IntError("From currency not found!") }
-        if (this.has(to)) { throw new IntError("To currency not found!") }
+        if (!["eur", "btc", "usd"].includes(from)) { throw new IntError("From currency not found!") }
+        if (!this.has(to)) { throw new IntError("To currency not found!") }
 
         return value / (await this.getPriceByOurName(to))[from]
     }

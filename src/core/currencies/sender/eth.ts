@@ -107,7 +107,6 @@ export class EthWithdraw extends EventEmitter {
     async send(from: Address, token: string, val: number, to: string) {
         let balance = await this.getBalance(from.addr)
         let fee = await this.web3.eth.getGasPrice() * BigInt(token == this.native ? 21000 : 65000)
-        console.log(token, this.native)
 
         if (balance <= fee && token != this.native) {
             let ftx = await this.requestFaucet(from.addr, (Number(fee) * 1.2) - Number(balance))

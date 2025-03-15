@@ -1,7 +1,8 @@
 import axios from 'axios'
 import { EventEmitter } from 'events'
-import { CFAcc, Domain, DomainStatus } from '../database'
+import { CFAcc, Domain } from '../database'
 import { Logger } from './logger'
+import { DomainStatus } from '../types'
 
 
 export interface CloudflareAccount {

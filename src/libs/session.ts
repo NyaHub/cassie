@@ -1,10 +1,9 @@
-// import { getPublic, verify, sign } from "eccrypto"
 import { NextFunction, Request, Response } from "express"
 import { APIKEYLEAD, sha256 } from "../utils"
-import { Model } from "sequelize"
 import { Logger } from "./logger"
-import { DefaultUser, Domain, IUser, Promo, User } from "../database/index"
+import { Domain, Promo, Ticket, User } from "../database/index"
 import { AuthSockRequest } from "../core/controllers/socket"
+import { DefaultUser } from "../types"
 
 let getPublicKey, verify, sign
 
@@ -34,7 +33,7 @@ export class Session {
     public res: Response
     public isAuth: boolean = false
     private authToken: string = ""
-    public cUser: IUser
+    public cUser: User
 
     get authtoken() {
         return this.authToken
@@ -96,6 +95,15 @@ export function session(pk: string, name: string, logger: Logger) {
 
         logger.info("Session token", token)
 
+        const include = {
+            include: [
+                { model: Domain, as: "Domain" },
+                { model: Promo, as: "Activated" },
+                { model: User, as: "referals" },
+                { model: Ticket, as: "Tickets" }
+            ]
+        }
+
         if (token && token[0] == APIKEYLEAD) {
             let u
             try {
@@ -104,18 +112,15 @@ export function session(pk: string, name: string, logger: Logger) {
                         apitoken: token,
                         DomainId: req.Domain.id
                     },
-                    include: [
-                        { model: Domain, as: "Domain" },
-                        { model: Promo, as: "Activated" }
-                    ]
+                    ...include
                 })).dataValues
             } catch (error) {
-                sess.cUser = DefaultUser
+                sess.cUser = User.build(DefaultUser)
                 logger.err(error.message)
             }
 
             if (!u) {
-                sess.cUser = DefaultUser
+                sess.cUser = User.build(DefaultUser)
                 return next()
             }
 
@@ -127,20 +132,100 @@ export function session(pk: string, name: string, logger: Logger) {
 
         if (!token || !await sess.verify(token)) {
 
-            sess.cUser = DefaultUser
+            sess.cUser = User.build(DefaultUser)
             return next()
         }
 
         try {
-            let u = await User.findByPk(sess.data.uuid)
+            let u = await User.findByPk(sess.data.uuid, include)
             if (!u) {
-                sess.cUser = DefaultUser
+                sess.cUser = User.build(DefaultUser)
                 return next()
             }
             sess.cUser = u
             sess.isAuth = true
         } catch (error) {
-            sess.cUser = DefaultUser
+            sess.cUser = User.build(DefaultUser)
+            logger.err(error.message)
+        }
+
+        next()
+    }
+}
+
+export function socketSession(pk: string, name: string, logger: Logger) {
+    return async (socket, next) => {
+
+        const token: string = socket.handshake.auth.token
+        const domain: string = socket.handshake.headers.host.split(":")[0]
+
+        let dom = await Domain.findOne({
+            where: {
+                domain
+            }
+        })
+
+        if (!dom) return next(new Error(""))
+
+        if (!token) return next(new Error("fucking beach"))
+
+        const sess = new Session(pk, name)
+
+        sess.res = socket
+
+        socket.session = sess
+        socket.Domain = dom
+
+        logger.info("Session token", token)
+
+        if (token && token[0] == APIKEYLEAD) {
+            let u
+            try {
+                u = (await User.findOne({
+                    where: {
+                        apitoken: token,
+                        DomainId: dom.id
+                    },
+                    include: [
+                        { model: Domain, as: "Domain" }
+                    ]
+                })).dataValues
+            } catch (error) {
+                sess.cUser = User.build(DefaultUser)
+                logger.err(error.message)
+            }
+
+            if (!u) {
+                sess.cUser = User.build(DefaultUser)
+                return next()
+            }
+
+            sess.cUser = u
+            sess.isAuth = true
+
+            return next()
+        }
+
+        if (!token || !await sess.verify(token)) {
+
+            sess.cUser = User.build(DefaultUser)
+            return next()
+        }
+
+        try {
+            let u = await User.findByPk(sess.data.uuid, {
+                include: [
+                    { model: Domain, as: "Domain" }
+                ]
+            })
+            if (!u) {
+                sess.cUser = User.build(DefaultUser)
+                return next()
+            }
+            sess.cUser = u
+            sess.isAuth = true
+        } catch (error) {
+            sess.cUser = User.build(DefaultUser)
             logger.err(error.message)
         }
 

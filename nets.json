@@ -3,7 +3,7 @@
     "nets": [
         {
             "descr": "ethereum mainnet",
-            "disabled": true,
+            "disabled": false,
             "net": "eth",
             "core": "eth",
             "host": "https://ethereum-rpc.publicnode.com",
@@ -21,7 +21,7 @@
         },
         {
             "descr": "base mainnet",
-            "disabled": true,
+            "disabled": false,
             "net": "base",
             "core": "eth",
             "host": "wss://base-rpc.publicnode.com",
@@ -57,7 +57,7 @@
         },
         {
             "descr": "tron mainnet",
-            "disabled": true,
+            "disabled": false,
             "net": "trx",
             "core": "trx",
             "token_path": "@root/tokens/trx.json",
