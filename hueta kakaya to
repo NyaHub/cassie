@@ -1,0 +1,4 @@
+insert into Users (id, username, password, email, allowance, balances, apitoken, DomainId, createdAt, updatedAt,  ref) values("32f7f20f-3517-4a5c-ab04-9c4281af0571","testuser",'$2b$10$AnmM1dw72qROxVBaloe5HO5pn8aruQUyffgNlvwVE3wMv2DFHerbu',"email",0,'{"usdt": {"val": 100, "usd": "100"}}',"KEN", datetime(),datetime(),"1875f6c0-284f-4d4b-abd8-97911e8bfc18","32f7f20f");
+('5c390a58-7f5e-4c33-abed-ee4f686edadf', 'test', '$2b$10$AnmM1dw72qROxVBaloe5HO5pn8aruQUyffgNlvwVE3wMv2DFHerbu', 'test@test.test', 0, '{"usdt":{"val":100,"usd":100}}', 'K793d57b43ae245f3d0a71462da6ef8c2-f2bc1d1cc0d15f7c04f3a3ca2826fc64', datetime(), datetime(),"1875f6c0-284f-4d4b-abd8-97911e8bfc18","5c390a58");
+
+("32f7f20f-3517-4a5c-ab04-9c4281af0571","testuser",'$2b$10$AnmM1dw72qROxVBaloe5HO5pn8aruQUyffgNlvwVE3wMv2DFHerbu',"email",0,'{"usdt": {"val": 100, "usd": "100"}}',"KEN", datetime(),datetime(),"1875f6c0-284f-4d4b-abd8-97911e8bfc18","32f7f20f")

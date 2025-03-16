@@ -656,7 +656,8 @@ export class API {
                 "v.email",
                 "v.password",
                 "session.",
-                "Domain."
+                "Domain.",
+                "cookie._rrr"
             ]))
         this.router.post("/acc/login",
             body('username').trim().notEmpty(),
@@ -664,11 +665,13 @@ export class API {
             this.request(UserCtrl, UserCtrl.login, [
                 "v.username",
                 "body.password",
-                "session."
+                "session.",
+                "Domain."
             ]))
         this.router.post("/acc/login_by_token", this.request(UserCtrl, UserCtrl.loginByToken, [
             "body.token",
-            "session."
+            "session.",
+            "Domain."
         ]))
         this.router.post("/acc/allowance/:uuid", this.allowance(Allowance.Manager, false), this.request(UserCtrl, UserCtrl.allowance, [
             "params.uuid",
@@ -947,6 +950,13 @@ export class API {
                             argmap.push(req.body[t[1]])
                         else
                             argmap.push(req.body)
+                        continue
+                    }
+                    if (t[0] === "cookie") {
+                        if (t[1])
+                            argmap.push(req.cookies[t[1]])
+                        else
+                            argmap.push(req.cookies)
                         continue
                     }
                     if (t[0] === "v") {

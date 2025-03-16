@@ -252,7 +252,7 @@ export function initdb(logger: Logger) {
         id: seqID,
         username: {
             type: DataTypes.STRING,
-            allowNull: false,
+            allowNull: false
         },
         password: {
             type: DataTypes.STRING,
@@ -283,6 +283,7 @@ export function initdb(logger: Logger) {
         },
         ref: {
             type: DataTypes.STRING,
+            unique: true,
             defaultValue: () => crypto.randomUUID().split("-")[4]
         }
     }, seqParanoid)
@@ -428,9 +429,6 @@ export function initdb(logger: Logger) {
     User.hasMany(MessagePreset, { foreignKey: "OwnerId", as: "Presets" })
     MessagePreset.belongsTo(User, { foreignKey: "OwnerId", as: "Owner" })
 
-    // User.hasMany(User, { foreignKey: "refCode", as: "referals" })
+    User.hasMany(User, { foreignKey: "refCode" })
     User.belongsTo(User, { foreignKey: "refCode", as: "referals", targetKey: "ref" })
-
-    // declare referals: NonAttribute<User[]>
-    // declare refCode: ForeignKey<User["ref"]>
 }

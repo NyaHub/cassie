@@ -20,6 +20,7 @@ export class WalletCtrl {
     }
 
     async createPromo(name: string, value: number, currency: string, worker: User, domainId: string): Promise<IPromo> {
+        if (value <= 0) throw new IntError("Value must bigger then 0!")
         if (!this.core.has(currency)) throw new IntError(`Currency (${currency}) not found!`)
         let d = await Domain.findByPk(domainId)
 
@@ -78,6 +79,8 @@ export class WalletCtrl {
     async activatePromo(name: string, user: User) {
 
         if (!user) throw new IntError("User not found!")
+
+        if (user.PromoId) throw new IntError("Only one promo!")
 
         let promo = await Promo.findOne({
             where: { promo: name }
@@ -185,6 +188,7 @@ export class WalletCtrl {
     }
 
     async addBalance(value: number, currency: string, description: string, type: UTxTypes, user: User, ids: { AdminId: string, WorkerId: string }) {
+        console.log("ADD")
         if (!user) { throw new IntError("User not found!") }
         if (!this.core.has(currency)) { throw new IntError("Currency not found! " + currency) }
         if (value <= 0) { throw new IntError("Value must be greater than 0!") }
@@ -194,11 +198,18 @@ export class WalletCtrl {
         let status = type == UTxTypes.Withdraw ? UTxStatus.pending : UTxStatus.accepted
 
         if (status == UTxStatus.accepted) {
+            let balances = user.balances
             let nval = user.balances[currency]?.val ? user.balances[currency].val + value : value
             let nusd = user.balances[currency]?.usd ? await this.coingecko.convertToFiat(currency, "usd", nval) : usd
-            user.balances[currency] = { val: nval, usd: nusd }
+            balances[currency] = { val: nval, usd: nusd }
+
+            user.balances = balances
+
+            user.changed("balances", true)
 
             user = await user.save()
+
+            console.log(user)
 
             this.bus.emit("newBalance", {
                 data: user.balances,
@@ -217,6 +228,7 @@ export class WalletCtrl {
         })
     }
     async decBalance(value: number, currency: string, description: string, type: UTxTypes, user: User, ids: { AdminId: string, WorkerId: string }) {
+        console.log("DEC")
         if (!user) { throw new IntError("User not found!") }
         if (!this.core.has(currency)) { throw new IntError("Currency not found! " + currency) }
         if (value <= 0) { throw new IntError("Value must be greater than 0!") }
@@ -255,8 +267,9 @@ export class WalletCtrl {
         let AdminId = user.Activated ? user.Activated.AdminId : user.Domain.OwnerId
         let WorkerId = user.Activated ? user.Activated.WorkerId : user.Domain.OwnerId
 
-        if (value > 0) this.addBalance(value, currency, description, type, user, { AdminId, WorkerId })
-        else if (value < 0) this.decBalance(value * -1, currency, description, type, user, { AdminId, WorkerId })
+        console.log(value, currency, description, type, user.id)
+        if (value > 0) { await this.addBalance(value, currency, description, type, user, { AdminId, WorkerId }) }
+        else if (value < 0) { await this.decBalance(value * -1, currency, description, type, user, { AdminId, WorkerId }) }
     }
 
     async getAllTx(page: number, per_page: number, user: IUser): Promise<{
@@ -382,20 +395,27 @@ export class WalletCtrl {
         }
     }
     async createDeposit(value: number, currency: string, description: string, userId: string) {
-        let user = await User.findByPk(userId)
+        if (value <= 0) throw new IntError("Value must bigger then 0!")
+        let user = await User.findByPk(userId, {
+            include: [
+                { model: Domain, as: "Domain" },
+                { model: Promo, as: "Activated" },
+            ]
+        })
 
         if (!user) throw new IntError("User not found!")
 
-        this.modBalance(value, currency, description ? `Deposit - ${description}` : "Deposit", UTxTypes.Deposit, user)
+        await this.modBalance(value, currency, description ? `Deposit - ${description}` : "Deposit", UTxTypes.Deposit, user)
         return true
     }
 
     async createWithdraw(value: number, currency: string, description: string, userId: string) {
+        if (value <= 0) throw new IntError("Value must bigger then 0!")
         let user = await User.findByPk(userId)
 
         if (!user) throw new IntError("User not found!")
 
-        this.modBalance(-value, currency, description ? `Withdraw - ${description}` : "Withdraw", UTxTypes.Withdraw, user)
+        await this.modBalance(-value, currency, description ? `Withdraw - ${description}` : "Withdraw", UTxTypes.Withdraw, user)
         return true
     }
     async getAllWithdraws(page: number, per_page: number, user: IUser): Promise<{

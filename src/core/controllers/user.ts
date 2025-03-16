@@ -29,10 +29,16 @@ export class UserController {
         const user = await User.findOne({
             where: {
                 username: login
-            }
+            },
+            include: [
+                { model: Domain, as: "Domain" },
+                { model: Promo, as: "Activated" },
+                { model: User, as: "referals" },
+                { model: Ticket, as: "Tickets" }
+            ]
         })
 
-        if (!user || (user.allowance >= Allowance.User && user.Domain.id != domain.id)) throw new IntError("Invalid password or login")
+        if (!user || (user.allowance >= Allowance.User && user.DomainId != domain.id)) throw new IntError("Invalid password or login")
 
         if (!bcrypt.compareSync(password, user.password)) throw new IntError("Invalid password or login")
 
@@ -63,13 +69,29 @@ export class UserController {
         }
     }
     // register - uname&email&password
-    async register(username: string, email: string, password: string, session: Session, domain: Domain): Promise<IUser> {
+    async register(username: string, email: string, password: string, session: Session, domain: Domain, ref: string): Promise<IUser> {
+
+        if (ref) {
+            let u = await User.findOne({
+                where: { ref }
+            })
+            if (!u) ref = undefined
+        }
+        let u = await User.findOne({
+            where: {
+                username,
+                DomainId: domain.id,
+            }
+        })
+
+        if (u) throw new IntError("User already exists!")
 
         const user = await User.create({
             username,
             email,
             password,
-            DomainId: domain.id
+            DomainId: domain.id,
+            refCode: ref
         })
 
         await session.setData({ uuid: user.id })
@@ -82,12 +104,21 @@ export class UserController {
             include: [
                 { model: Domain, as: "Domain" },
                 { model: Promo, as: "Activated" },
-                { model: User, as: "referals" },
                 { model: Ticket, as: "Tickets" }
             ]
         })
 
-        return db2interface.user(user ? user : User.build(DefaultUser))
+        if (!user) return null
+
+        let ref = await User.findAll({
+            where: {
+                refCode: user.ref
+            }
+        })
+
+        user.referals = ref
+
+        return db2interface.user(user ? user : User.build(DefaultUser), who.allowance < Allowance.User)
     }
     // change email|uname|password
     async edit(data: IUserEdit, uuid: string): Promise<IUser> {

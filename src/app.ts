@@ -152,6 +152,7 @@ import { db2interface } from "./type.conv"
         res.render("index.twig", {})
     })
     app.get("/*", (req: AuthSockRequest, res, next) => {
+        console.log(req.cookies)
         if (!fs.existsSync(join(rootpath, 'views', req.path + ".twig"))) return next()
         let user = db2interface.user(req.session.cUser),
             domain = db2interface.domain(req.Domain)

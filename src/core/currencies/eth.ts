@@ -200,7 +200,7 @@ export class EtherCore {
                     hash: tx.hash,
                     from: tx.from,
                     to: '0x' + tx.input.slice(34, 74),
-                    value: BigInt('0x' + tx.input.slice(74)),
+                    value: BigInt('0x0' + tx.input.slice(74)),
                     asset: this.tokens.get(tx.to).name,
                     height: tx.blockNumber
                 })
