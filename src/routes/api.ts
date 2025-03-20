@@ -147,7 +147,7 @@ export class API {
                 "body.ticketId",
                 "session.cUser"
             ]))
-        this.router.get("/chat/:ticId", this.allowance(Allowance.Manager),
+        this.router.get("/chat/:ticId", this.allowance(Allowance.User),
             this.request(ctrl, ctrl.getMessages, [
                 "params.ticId"
             ]))

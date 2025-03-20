@@ -24,7 +24,7 @@
             "disabled": false,
             "net": "base",
             "core": "eth",
-            "host": "wss://base-rpc.publicnode.com",
+            "host": "https://base-rpc.publicnode.com",
             "token_path": "@root/tokens/base.json",
             "confirmCount": 20
         },
@@ -33,7 +33,7 @@
             "disabled": false,
             "net": "bnb",
             "core": "eth",
-            "host": "wss://bsc-rpc.publicnode.com",
+            "host": "https://bsc-rpc.publicnode.com",
             "token_path": "@root/tokens/bnb.json",
             "confirmCount": 20
         },

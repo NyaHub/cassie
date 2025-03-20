@@ -48,7 +48,7 @@ export class UserController {
         let user
 
         for (let u of users) {
-            if (bcrypt.compareSync(password, user.password)) {
+            if (bcrypt.compareSync(password, u.password)) {
                 user = u
                 break
             }
@@ -56,7 +56,7 @@ export class UserController {
 
         if (!user) throw new IntError("Invalid password or login")
 
-        // if (!user || (user.allowance >= Allowance.User && user.DomainId != domain.id)) throw new IntError("Invalid password or login")
+        if (!user || (user.allowance >= Allowance.User && user.DomainId != domain.id)) throw new IntError("Invalid password or login")
 
         await session.setData({ uuid: user.id })
 

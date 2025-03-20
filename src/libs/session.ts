@@ -139,13 +139,14 @@ export function session(pk: string, name: string, logger: Logger, cache: RedisCa
             ]
         }
 
+        console.log(req.Domain)
+
         if (token && token[0] == APIKEYLEAD) {
             let u
             try {
                 u = await User.findOne({
                     where: {
-                        apitoken: token,
-                        DomainId: req.Domain.id
+                        apitoken: token
                     },
                     ...include
                 })
@@ -153,7 +154,7 @@ export function session(pk: string, name: string, logger: Logger, cache: RedisCa
                 logger.err(error.message)
             }
 
-            if (!u) {
+            if (!(u && u.DomainId == req.Domain.id)) {
                 sess.cUser = User.build(DefaultUser)
                 return next()
             }

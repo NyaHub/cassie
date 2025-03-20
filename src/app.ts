@@ -167,6 +167,6 @@ import { SystemDefUser } from "./types"
 
     server.listen(port, "0.0.0.0", async () => {
         logger.info("App listen on: 0.0.0.0:3000")
-        await sequelize.sync({ alter: true })
+        await sequelize.sync({ alter: !true })
     })
 })()
