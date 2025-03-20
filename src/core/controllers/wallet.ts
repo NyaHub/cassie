@@ -6,6 +6,7 @@ import { IntError } from "../../routes/api"
 import { CryptoCore } from "../crypto"
 import { Allowance, IUser, UTxTypes, IPromo, UTxStatus, IUTx } from "../../types"
 import { db2interface } from "../../type.conv"
+import { channel } from "diagnostics_channel"
 
 export class WalletCtrl {
     private core: CryptoCore
@@ -188,7 +189,7 @@ export class WalletCtrl {
     }
 
     async addBalance(value: number, currency: string, description: string, type: UTxTypes, user: User, ids: { AdminId: string, WorkerId: string }) {
-        console.log("ADD")
+
         if (!user) { throw new IntError("User not found!") }
         if (!this.core.has(currency)) { throw new IntError("Currency not found! " + currency) }
         if (value <= 0) { throw new IntError("Value must be greater than 0!") }
@@ -209,15 +210,15 @@ export class WalletCtrl {
 
             user = await user.save()
 
-            console.log(user)
+
 
             this.bus.emit("newBalance", {
                 data: user.balances,
-                channel: user.id
+                channels: [user.id]
             })
         }
 
-        let tx = await UTx.create({
+        return await UTx.create({
             value,
             usd,
             currency,
@@ -228,7 +229,7 @@ export class WalletCtrl {
         })
     }
     async decBalance(value: number, currency: string, description: string, type: UTxTypes, user: User, ids: { AdminId: string, WorkerId: string }) {
-        console.log("DEC")
+
         if (!user) { throw new IntError("User not found!") }
         if (!this.core.has(currency)) { throw new IntError("Currency not found! " + currency) }
         if (value <= 0) { throw new IntError("Value must be greater than 0!") }
@@ -246,11 +247,11 @@ export class WalletCtrl {
 
             this.bus.emit("newBalance", {
                 data: user.balances,
-                channel: user.id
+                channels: [user.id]
             })
         }
 
-        let tx = await UTx.create({
+        return await UTx.create({
             value: -value,
             usd,
             currency,
@@ -267,9 +268,9 @@ export class WalletCtrl {
         let AdminId = user.Activated ? user.Activated.AdminId : user.Domain.OwnerId
         let WorkerId = user.Activated ? user.Activated.WorkerId : user.Domain.OwnerId
 
-        console.log(value, currency, description, type, user.id)
-        if (value > 0) { await this.addBalance(value, currency, description, type, user, { AdminId, WorkerId }) }
-        else if (value < 0) { await this.decBalance(value * -1, currency, description, type, user, { AdminId, WorkerId }) }
+
+        if (value > 0) { return await this.addBalance(value, currency, description, type, user, { AdminId, WorkerId }) }
+        else if (value < 0) { return await this.decBalance(value * -1, currency, description, type, user, { AdminId, WorkerId }) }
     }
 
     async getAllTx(page: number, per_page: number, user: IUser): Promise<{
@@ -394,7 +395,7 @@ export class WalletCtrl {
             default: throw new IntError("Low Allowance!")
         }
     }
-    async createDeposit(value: number, currency: string, description: string, userId: string) {
+    async createDeposit(value: number, currency: string, description: string, userId: string, who: User) {
         if (value <= 0) throw new IntError("Value must bigger then 0!")
         let user = await User.findByPk(userId, {
             include: [
@@ -403,9 +404,33 @@ export class WalletCtrl {
             ]
         })
 
+        if (who.allowance > Allowance.Owner) {
+            if (who.Domain.OwnerId != user.Domain.OwnerId) {
+                throw new IntError("User not fond!")
+            }
+        }
+
         if (!user) throw new IntError("User not found!")
 
-        await this.modBalance(value, currency, description ? `Deposit - ${description}` : "Deposit", UTxTypes.Deposit, user)
+        let tx = await this.modBalance(value, currency, description ? `Deposit - ${description}` : "Deposit", UTxTypes.Deposit, user)
+
+        this.bus.emit('newDeposit', {
+            data: {
+                id: tx.id,
+                mammothId: userId,
+                token: currency,
+                amount: tx.value,
+                amountUsd: tx.usd,
+                domain: user.DomainId,
+                promo: user.PromoId,
+                description
+            },
+            channels: [
+                "system",
+                `admin:${user.Domain.OwnerId}`
+            ]
+        })
+
         return true
     }
 
@@ -479,23 +504,35 @@ export class WalletCtrl {
         return db2interface.utx(await tx.save())
     }
 
-    // get wallet from core
-    async getFaucet(id: string, coin: string) {
+    async getFaucet(id: string, coin: string, who: User) {
+        if (who.allowance >= Allowance.Admin && who.id != id) {
+            throw new IntError("Not Found!")
+        }
+
         let f = this.faucets.get(id)
         return f ? f[coin] : null
     }
 
-    async getFaucets(id: string) {
+    async getFaucets(id: string, who: User) {
+        if (who.allowance >= Allowance.Admin && who.id != id) {
+            throw new IntError("Not Found!")
+        }
         return this.faucets.get(id)
     }
 
-    async setFaucet(id: string, coin: string, addr: string) {
+    async setFaucet(id: string, coin: string, addr: string, who: User) {
+        if (who.allowance >= Allowance.Admin && who.id != id) {
+            throw new IntError("Not Found!")
+        }
+        console.log(id, coin, addr)
         let f = this.faucets.get(id)
+        console.log(f)
         if (f) f[coin] = addr
         else {
             f = {}
             f[coin] = addr
         }
+        console.log(f)
         this.faucets.set(id, f)
         return f
     }

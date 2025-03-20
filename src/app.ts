@@ -22,6 +22,9 @@ import { rootpath } from "./root"
 import { AuthSockRequest, initSocket } from "./core/controllers/socket"
 import fs from "node:fs"
 import { db2interface } from "./type.conv"
+import { RedisCache } from "./libs/cache"
+import { WalletCtrl } from "./core/controllers/wallet"
+import { SystemDefUser } from "./types"
 
 (async () => {
     const logger = new Logger({
@@ -37,6 +40,8 @@ import { db2interface } from "./type.conv"
         setTimeout(profileMem, 60000)
     }
     profileMem()
+
+    const cache = new RedisCache()
 
     initdb(logger.getLogger('Sequelize'))
 
@@ -70,30 +75,15 @@ import { db2interface } from "./type.conv"
     eventBus.on("confirmedtx", async d => {
         d.usd = (await coingecko.getPriceByOurName(d.currency.split("_")[0])).usd * parseFloat(d.value)
 
-        // logger.log("[Event]: [new transaction]: ok", d)
-        // // if (user) {
-        //     eventBus.emit('newDeposit', {
-        //         // id: "7225647136791068672", // id депозита
-        //         mammothId: d.uhash, // id мамонта
-        //         token: d.currency.split("_")[0].toLowerCase(), // токен депозита
-        //         amount: d.value, // сумма депозита в токене
-        //         amountUsd: d.usd, // сумма депозита в USD
-        //         // workerPercent: 60, // процент воркера на момент депозита
-        //         domain: user.domain, // домен воркера
-        //         promo: user.promo,
-        //         txHash: d.txhash // хеш транзакции
-        //     })
-        // // } else {
-        //     eventBus.emit('newDeposit', {
-        //         // id: "7225647136791068672", // id депозита
-        //         mammothId: d.uhash, // id мамонта
-        //         token: d.currency.split("_")[0].toLowerCase(), // токен депозита
-        //         amount: d.value, // сумма депозита в токене
-        //         amountUsd: d.usd, // сумма депозита в USD
-        //         // workerPercent: 60, // процент воркера на момент депозита
-        //         txHash: d.txhash // хеш транзакции
-        //     })
-        // }
+        let walletCTRL = new WalletCtrl(core, coingecko, eventBus)
+
+        walletCTRL.createDeposit(
+            d.value,
+            d.currency.split("_")[0].toLowerCase(),
+            `new Deposit, ${coingecko.getBlockScans(d.currency.split("_")[1].toLowerCase()).replace('<txhash>', d.txhash)}`,
+            d.uhash,
+            User.build(SystemDefUser)
+        )
     })
 
     const app = express()
@@ -113,24 +103,36 @@ import { db2interface } from "./type.conv"
     app.use(cookieParser())
     app.use(async (req: AuthSockRequest, res, next) => {
         let domain = req.headers["host"].split(":")[0]
-        req.Domain = (await Domain.findOrCreate({
-            defaults: {
-                status: 2,
-                domain,
-                nsList: [],
-                zoneId: "",
-                name: domain,
-            },
-            where: { domain }
-        }))[0]
+
+        let d = await cache.get(`domain:${domain}`)
+        if (!d) {
+            req.Domain = (await Domain.findOrCreate({
+                defaults: {
+                    status: 2,
+                    domain,
+                    nsList: [],
+                    zoneId: "",
+                    name: domain,
+                },
+                where: { domain }
+            }))[0]
+
+            await cache.set(`domain:${domain}`, req.Domain, 100 * 60) // ttl set to 100min
+
+        }
+
+        req.Domain = d
         next()
     })
-    app.use(session(session_pk, "session", logger.getLogger("libs/session.ts")))
-    app.use(initSocket(eventBus, server, logger.getLogger("socker.ts"), { pk: session_pk, name: "session", }))
+    app.use(session(session_pk, "session", logger.getLogger("libs/session.ts"), cache))
+    let { sockMidl, sockRoute } = initSocket(eventBus, server, logger.getLogger("socker.ts"), { pk: session_pk, name: "session", }, cache)
 
-    const api = new API(logger.getLogger("routes/api.ts"), core, coingecko, eventBus)
+    app.use(sockMidl)
+
+    const api = new API(logger.getLogger("routes/api.ts"), core, coingecko, eventBus, cache)
 
     app.use("/api/v1", api.router)
+    app.get("/api/v1/sockData", sockRoute)
 
     app.get("/ref/:ref", async (req: AuthSockRequest, res) => {
         if (req.session.isAuth) return res.redirect("/")
@@ -152,7 +154,6 @@ import { db2interface } from "./type.conv"
         res.render("index.twig", {})
     })
     app.get("/*", (req: AuthSockRequest, res, next) => {
-        console.log(req.cookies)
         if (!fs.existsSync(join(rootpath, 'views', req.path + ".twig"))) return next()
         let user = db2interface.user(req.session.cUser),
             domain = db2interface.domain(req.Domain)

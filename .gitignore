@@ -144,3 +144,4 @@ docker
 !tokens/*
 uploads
 user_files
+.prettierignore

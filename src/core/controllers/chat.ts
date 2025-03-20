@@ -37,21 +37,12 @@ export class ChatCtrl {
         })
 
         this.bus.emit("msgRead", {
-            data: user.id,
-            channel: ticketId
-        })
-        this.bus.emit("msgRead", {
-            data: user.id,
-            channel: "support"
-        })
-
-        this.bus.emit("newMessage", {
-            data: msg.dataValues,
-            channel: ticketId
+            data: `${user.id}:${ticketId}`,
+            channels: [`support:${user.Domain.OwnerId}`, `ticket:${ticketId}`]
         })
         this.bus.emit("newMessage", {
             data: msg.dataValues,
-            channel: "support"
+            channels: [`support:${user.Domain.OwnerId}`, `ticket:${ticketId}`]
         })
 
         return true
@@ -70,11 +61,7 @@ export class ChatCtrl {
         })
         this.bus.emit("msgRead", {
             data: user.id,
-            channel: ticketId
-        })
-        this.bus.emit("msgRead", {
-            data: user.id,
-            channel: "support"
+            channels: [`support:${user.Domain.OwnerId}`, `ticket:${ticketId}`]
         })
         return true
     }
@@ -90,7 +77,7 @@ export class ChatCtrl {
         return db2interface.ticket(await Ticket.create({
             description,
             UserId: user.id,
-            OwnerId: user.Domain?.OwnerId
+            AdminId: user.Domain?.OwnerId
         }))
     }
     async getTickets(page: number, per_page: number, user: User): Promise<{

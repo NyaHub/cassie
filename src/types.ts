@@ -215,3 +215,36 @@ export const DefaultUser = {
 
     createdAt: new Date(),
 }
+
+export const SystemDefUser = {
+    id: ZERO_ID,
+    email: "",
+    username: "",
+    allowance: Allowance.System,
+    balances: {},
+    apitoken: ZERO_KEY,
+    password: "",
+    bannedAt: new Date(),
+    ref: "000000000000",
+
+    referals: [],
+    refCode: "",
+
+    Domains: [],
+    Domain: null,
+    DomainId: null,
+
+    Tickets: [],
+    Messages: [],
+
+    Txs: [],
+
+    AdminPromos: [],
+    Promos: [],
+
+    Activated: null,
+    PromoId: "",
+
+    createdAt: new Date(),
+}
+

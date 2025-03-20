@@ -118,6 +118,32 @@ export class CFCtrl {
 
         return this.get(id)
     }
+
+    async moveSite(siteId: string, userId: string, who: User) {
+        let u = await User.findByPk(userId)
+        if (!u) throw new IntError("User not found!")
+
+        if (who.allowance >= Allowance.Owner) {
+            await Domain.update({
+                OwnerId: userId
+            }, {
+                where: {
+                    id: siteId
+                }
+            })
+        } else {
+            await Domain.update({
+                OwnerId: userId
+            }, {
+                where: {
+                    id: siteId,
+                    OwnerId: who.id
+                }
+            })
+        }
+
+        return this.get(siteId)
+    }
 }
 
 export class CloudflareManager {

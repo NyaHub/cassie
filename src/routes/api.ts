@@ -2,23 +2,20 @@ import { NextFunction, Router, Response } from "express"
 import { AuthRequest } from "../libs/session"
 import { Logger } from "../libs/logger"
 import { UserController } from "../core/controllers/user"
-import { File, MessagePreset } from "../database/index"
+import { File } from "../database/index"
 import { CryptoCore } from "../core/crypto"
-import { ObjectId } from "mongodb"
 import { Coingecko } from "../libs/coingecko"
 import multer from "multer"
 import { join } from "node:path"
 import { rootpath } from "../root"
-// import { createPromo, deletePromo, getAddrs, getAllDomain, getAllPromo, getByCode, updatePromo } from "./gambler"
-// import { Faucets, FSCache } from "../libs/cache"
-import { body, matchedData, param, query, validationResult } from "express-validator"
+import { body, matchedData, query, validationResult } from "express-validator"
 import { WalletCtrl } from "../core/controllers/wallet"
 import { CFCtrl } from "../core/controllers/domain"
 import EventEmitter from "node:events"
 import { ChatCtrl } from "../core/controllers/chat"
 import { Allowance } from "../types"
+import { RedisCache } from "../libs/cache"
 
-// const sup = new FSCache("./sup.json")
 
 export class IntError extends Error {
     constructor(msg: string) {
@@ -34,26 +31,23 @@ export class API {
     private core: CryptoCore
     private coingecko: Coingecko
     private event: EventEmitter
+    private cache: RedisCache
 
-    constructor(logger: Logger, core: CryptoCore, coingecko: Coingecko, event: EventEmitter) {
+    constructor(logger: Logger, core: CryptoCore, coingecko: Coingecko, event: EventEmitter, cache: RedisCache) {
         this.router = Router()
         this.logger = logger
         this.core = core
         this.coingecko = coingecko
         this.event = event
-
-        // this.enableCFRoutes() // вот тут роуты клауда
+        this.cache = cache
 
         // DomainCron(logger.getLogger("DomainCron")) // следит за состоянием доменов
 
-        this.enableAccRoutes() // это роуты для авторизации, эта платежка мой личный проект был, так что не удивляйся
-        this.enableCoreRoutes(core, coingecko) // роуты платежки
-        this.enableCoingecko(coingecko) // получение некоторой косметики и цен для крипты
-        // this.enablePromo(coingecko) // пара роутов для агрегации промиков и депов
+        this.enableAccRoutes()
+        this.enableCoreRoutes(core, coingecko)
+        this.enableCoingecko(coingecko)
         this.enableFile()
-        // this.enableTPPresets()
         // this.enableGambler()
-        // this.enableCBRoutes()
         this.walletRoutes()
         this.siteRoutes()
         this.support()
@@ -136,443 +130,6 @@ export class API {
         ]))
     }
 
-    // enablePromo(coingecko: Coingecko) {
-    //     let parse_used = (used) => {
-    //         if (typeof used === "string") {
-    //             used = JSON.parse(used)
-    //         }
-    //         let t = []
-    //         for (let u of used) {
-    //             t.push({
-    //                 uid: u.uid,
-    //                 country: typeof u.country === "string" ? JSON.parse(u.country) : u.country
-    //             })
-    //         }
-
-    //         return t
-    //     }
-
-    //     this.router.use("/promo/*", async (req, res, next) => {
-    //         let key = req.body.key || req.query.key
-    //         if (!key || key != (process.env.API_KEY || "dick")) {
-    //             res.status(200).send("err")
-    //             return res.end()
-    //         }
-
-    //         next()
-    //     })
-    //     this.router.get("/promo/all", async (req, res) => {
-    //         try {
-    //             let promos = await promocodes.find().toArray()
-
-    //             let ret = []
-
-    //             for (let promo of promos) {
-    //                 let used = parse_used(promo.used)
-
-    //                 let uids = [...used.map(v => v.uid), ...used.map(v => new ObjectId(v.uid + ""))]
-
-    //                 let deps = await invoices.find({ user: { $in: uids } }).toArray()
-
-    //                 let total = 0
-    //                 for (let d of deps) {
-    //                     d.sum = parseFloat(d.sum.toString())
-    //                     d.usd_converted = (await coingecko.getPriceByOurName(d.currency.split('_')[0])).usd * d.sum
-    //                     total += d.usd_converted
-    //                 }
-
-    //                 ret.push({
-    //                     id: promo._id,
-    //                     code: promo.code,
-    //                     used,
-    //                     currency: promo.currency,
-    //                     sum: promo.sum,
-    //                     usages: promo.usages,
-    //                     times_used: promo.times_used,
-    //                     expires: promo.expires,
-    //                     vip: promo.vip,
-    //                     dep: {
-    //                         total, // total sum deposit in usd
-    //                         count: deps.length, // count of deposits
-    //                         deps: req.query.deps ? deps : null // dep arr
-    //                     }
-    //                 })
-    //             }
-
-    //             res.send({
-    //                 status: 0,
-    //                 data: ret
-    //             })
-    //         } catch (e) {
-    //             this.logger.err(`[/promo/all]: ${e.code}: ${e.messasge}`)
-    //             res.send({
-    //                 status: 1,
-    //                 message: e.message
-    //             })
-    //         }
-    //     })
-    //     this.router.get("/promo/:id", async (req, res) => {
-    //         try {
-    //             let promo = await promocodes.findOne({
-    //                 _id: new ObjectId(req.params.id + "")
-    //             })
-
-    //             if (!promo) {
-    //                 res.send({
-    //                     status: 1,
-    //                     message: "Pomo not found"
-    //                 })
-    //             }
-
-    //             let used = parse_used(promo.used)
-
-    //             let uids = [...used.map(v => v.uid), ...used.map(v => new ObjectId(v.uid + ""))]
-
-    //             let deps = await invoices.find({ user: { $in: uids } }).toArray()
-
-    //             let total = 0
-    //             for (let d of deps) {
-    //                 d.sum = parseFloat(d.sum.toString())
-    //                 d.usd_converted = (await coingecko.getPriceByOurName(d.currency.split('_')[0])).usd * d.sum
-    //                 total += d.usd_converted
-    //             }
-
-    //             res.send({
-    //                 status: 0,
-    //                 data: {
-    //                     id: promo._id,
-    //                     code: promo.code,
-    //                     used,
-    //                     currency: promo.currency,
-    //                     sum: promo.sum,
-    //                     usages: promo.usages,
-    //                     times_used: promo.times_used,
-    //                     expires: promo.expires,
-    //                     vip: promo.vip,
-    //                     dep: {
-    //                         total,
-    //                         count: deps.length,
-    //                         deps: req.query.deps ? deps : null
-    //                     }
-    //                 }
-    //             })
-    //         } catch (e) {
-    //             this.logger.err(`[/promo/${req.params.id}]: ${e.code}: ${e.messasge}`)
-    //             res.send({
-    //                 status: 1,
-    //                 message: e.message
-    //             })
-    //         }
-    //     })
-
-    // }
-
-    // enableCFRoutes() {
-    //     this.router.use("/cf/*", async (req, res, next) => {
-    //         let key = req.body.key || req.query.key
-    //         if (!key || key != (process.env.API_KEY || "dick")) {
-    //             res.status(200).send("err")
-    //             return res.end()
-    //         }
-
-    //         next()
-    //     })
-    //     this.router.use("/claud/*", async (req, res, next) => {
-    //         let key = req.body.key || req.query.key
-    //         if (!key || key != (process.env.API_KEY || "dick")) {
-    //             res.status(200).send("err")
-    //             return res.end()
-    //         }
-
-    //         next()
-    //     })
-    //     this.router.post("/claud/add", async (req, res, next) => {
-    //         // req.body = {domain, ip, name}
-    //         let a
-    //         while (true) {
-    //             try {
-    //                 if (!req.body.domain || !req.body.ip) {
-    //                     res.send({
-    //                         status: 1,
-    //                         message: "Params error!"
-    //                     })
-    //                     return
-    //                 }
-
-    //                 const accs = await cfDB.find().toArray()
-
-    //                 for (const acc of accs) {
-    //                     if (!acc?.limit && !acc?.deleted && (await check(acc))) {
-    //                         a = acc
-    //                         break
-    //                     } else {
-    //                         await cfDB.updateOne({
-    //                             _id: new ObjectId(acc._id)
-    //                         }, {
-    //                             $set: { deleted: true }
-    //                         })
-    //                     }
-    //                 }
-
-    //                 let cf = new CloudFlare(a.email, a.apiKey, a.accId)
-    //                 let r = await cf.addDomain(req.body.domain, req.body.ip)
-    //                 let ir = await domainDB.insertOne({
-    //                     ...r,
-    //                     accId: a._id,
-    //                     name: req.body.name || req.body.domain.split(".").slice(-2).join(".")
-    //                 })
-    //                 return res.send({
-    //                     status: 0,
-    //                     data: {
-    //                         _id: ir.insertedId,
-    //                         ...r,
-    //                         accId: a._id,
-    //                         name: req.body.name
-    //                     }
-    //                 })
-    //             } catch (error) {
-    //                 if (error?.response?.data?.errors && error?.response?.data?.errors[0].code == 1118) {
-    //                     await cfDB.updateOne({
-    //                         _id: new ObjectId(a._id)
-    //                     }, {
-    //                         $set: {
-    //                             limit: true
-    //                         }
-    //                     })
-    //                     continue
-    //                 } else {
-    //                     this.logger.err(error.message + " " + JSON.stringify(error?.response?.data || []))
-    //                     return res.send({
-    //                         status: 1,
-    //                         messge: "Server error"
-    //                     })
-    //                 }
-    //             }
-    //         }
-    //     })
-    //     this.router.put("/claud/:did", async (req, res, next) => {
-    //         // req.body = {domain, ip, name}
-    //         let a
-    //         while (true) {
-    //             try {
-    //                 if (!req.body.name) {
-    //                     res.send({
-    //                         status: 1,
-    //                         message: "Params error!"
-    //                     })
-    //                     return
-    //                 }
-
-    //                 let dom = await domainDB.findOne({
-    //                     _id: new ObjectId(req.params.did + "")
-    //                 })
-
-    //                 if (!dom) {
-    //                     res.send({
-    //                         status: 1,
-    //                         message: "Domain not found!"
-    //                     })
-    //                     return
-    //                 }
-
-    //                 let d = await domainDB.updateOne({ _id: dom._id }, {
-    //                     name: req.body.name
-    //                 })
-
-    //                 res.send({
-    //                     status: 0,
-    //                     data: {
-    //                         ...dom
-    //                     }
-    //                 })
-    //             } catch (error) {
-    //                 res.send({
-    //                     status: 1,
-    //                     message: "Server error"
-    //                 })
-    //                 // console.log(error)
-    //                 this.logger.err(error.message)
-    //             }
-    //         }
-    //     })
-    //     this.router.delete("/claud/:zoneid", async (req, res: Response, next) => {
-    //         // req.body = {}
-    //         try {
-    //             let d = await domainDB.findOne({
-    //                 _id: new ObjectId("" + req.params.zoneid)
-    //             })
-    //             if (!d || d?.deleted) {
-    //                 return res.send({
-    //                     status: 0,
-    //                     data: "ok"
-    //                 })
-    //             }
-    //             let acc = await cfDB.findOne({
-    //                 _id: new ObjectId("" + d.accId)
-    //             })
-    //             if (!acc) {
-    //                 this.logger.err(`Account ${d.accId} not found`)
-    //                 return res.send({
-    //                     status: 1,
-    //                     message: `Account not found`
-    //                 })
-    //             }
-    //             if (acc?.deleted) {
-    //                 return res.send({
-    //                     status: 0,
-    //                     data: "ok"
-    //                 })
-    //             }
-    //             await cfDB.updateOne({
-    //                 _id: new ObjectId(acc._id)
-    //             }, {
-    //                 $set: {
-    //                     limit: false
-    //                 }
-    //             })
-    //             let cf = new CloudFlare(acc.email, acc.apiKey, acc.accId)
-    //             let r = await cf.deleteDomain(d.zoneId)
-    //             await domainDB.deleteOne({ _id: new ObjectId(req.params.zoneid) })
-    //             return res.send({
-    //                 status: 0,
-    //                 data: "ok"
-    //             })
-    //         } catch (error) {
-    //             this.logger.err(error.message)
-    //             return res.status(200).send({
-    //                 status: 1,
-    //                 message: "Server error"
-    //             })
-    //         }
-    //     })
-
-    //     this.router.post("/cf/add", async (req, res, next) => {
-    //         // req.body = {domain, ip, name}
-    //         let a
-    //         while (true) {
-    //             try {
-    //                 if (!req.body.domain || !req.body.ip) {
-    //                     res.status(200).send("err")
-    //                     res.end()
-    //                     return
-    //                 }
-
-    //                 const accs = await cfDB.find().toArray()
-
-    //                 for (const acc of accs) {
-    //                     if (!acc?.limit && !acc?.deleted && (await check(acc))) {
-    //                         a = acc
-    //                         break
-    //                     } else {
-    //                         await cfDB.updateOne({
-    //                             _id: new ObjectId(acc._id)
-    //                         }, {
-    //                             $set: { deleted: true }
-    //                         })
-    //                     }
-    //                 }
-
-    //                 let cf = new CloudFlare(a.email, a.apiKey, a.accId)
-    //                 let r = await cf.addDomain(req.body.domain, req.body.ip)
-    //                 let ir = await domainDB.insertOne({
-    //                     ...r,
-    //                     accId: a._id,
-    //                     name: req.body.name || req.body.domain.split(".").slice(-2).join(".")
-    //                 })
-    //                 return res.send({
-    //                     _id: ir.insertedId,
-    //                     ...r,
-    //                     accId: a._id,
-    //                     name: req.body.name
-    //                 })
-    //             } catch (error) {
-    //                 if (error?.response?.data?.errors && error?.response?.data?.errors[0].code == 1118) {
-    //                     await cfDB.updateOne({
-    //                         _id: new ObjectId(a._id)
-    //                     }, {
-    //                         $set: {
-    //                             limit: true
-    //                         }
-    //                     })
-    //                     continue
-    //                 } else {
-    //                     res.status(200).send("err")
-    //                     // console.log(error)
-    //                     this.logger.err(error.message)
-    //                 }
-    //             }
-    //         }
-    //     })
-    //     this.router.put("/cf/:did", async (req, res, next) => {
-    //         // req.body = {domain, ip, name}
-    //         let a
-    //         while (true) {
-    //             try {
-    //                 if (!req.body.name) {
-    //                     res.status(200).send("err")
-    //                     res.end()
-    //                     return
-    //                 }
-
-    //                 let dom = await domainDB.findOne({
-    //                     _id: new ObjectId(req.params.did + "")
-    //                 })
-
-    //                 if (!dom) {
-    //                     res.send("err1")
-    //                     return
-    //                 }
-
-    //                 let d = await domainDB.updateOne({ _id: dom._id }, {
-    //                     name: req.body.name
-    //                 })
-
-    //                 res.send({
-    //                     ...dom
-    //                 })
-    //             } catch (error) {
-    //                 res.status(200).send("err")
-    //                 // console.log(error)
-    //                 this.logger.err(error.message)
-    //             }
-    //         }
-    //     })
-    //     this.router.delete("/cf/:zoneid", async (req, res: Response, next) => {
-    //         // req.body = {}
-    //         try {
-    //             let d = await domainDB.findOne({
-    //                 _id: new ObjectId("" + req.params.zoneid)
-    //             })
-    //             if (!d || d?.deleted) {
-    //                 return res.status(200).send("ok")
-    //             }
-    //             let acc = await cfDB.findOne({
-    //                 _id: new ObjectId("" + d.accId)
-    //             })
-    //             if (!acc) {
-    //                 this.logger.err(`Account ${d.accId} not found`)
-    //                 return res.status(200).send("err")
-    //             }
-    //             if (acc?.deleted) {
-    //                 return res.status(200).send("ok")
-    //             }
-    //             await cfDB.updateOne({
-    //                 _id: new ObjectId(acc._id)
-    //             }, {
-    //                 $set: {
-    //                     limit: false
-    //                 }
-    //             })
-    //             let cf = new CloudFlare(acc.email, acc.apiKey, acc.accId)
-    //             let r = await cf.deleteDomain(d.zoneId)
-    //             await domainDB.deleteOne({ _id: new ObjectId(req.params.zoneid) })
-    //             return res.status(200).send("ok")
-    //         } catch (error) {
-    //             this.logger.err(error.message)
-    //             return res.status(200).send("err")
-    //         }
-    //     })
-    // }
 
     support() {
         let ctrl = new ChatCtrl(this.event)
@@ -645,12 +202,16 @@ export class API {
     }
 
     enableAccRoutes() {
-        const UserCtrl = new UserController()
+        const UserCtrl = new UserController(this.cache)
         this.router.post("/acc/register", this.allowance(Allowance.Guest),
             body('username').trim().isAlphanumeric("en-US").isLength({ min: 3 }).escape(),
             body('email').trim().isEmail().normalizeEmail(),
             body('password').isStrongPassword({
-                minLength: 12
+                minLength: 6,
+                minLowercase: 0,
+                minUppercase: 0,
+                minNumbers: 0,
+                minSymbols: 0,
             }), this.request(UserCtrl, UserCtrl.register, [
                 "v.username",
                 "v.email",
@@ -681,7 +242,14 @@ export class API {
             "session.cUser"
         ]))
 
-        this.router.get("/acc/all", this.allowance(Allowance.Manager), this.request(UserCtrl, UserCtrl.getUsers, []))
+        this.router.get("/acc/all", this.allowance(Allowance.Manager),
+            query("page").isNumeric().optional(),
+            query("per_page").isNumeric().optional(),
+            this.request(UserCtrl, UserCtrl.getUsers, [
+                "query.page",
+                "query.per_page",
+                "session.cUser"
+            ]))
 
         this.router.get("/acc/:uuid", this.allowance(Allowance.Admin, true), this.request(UserCtrl, UserCtrl.get, [
             "params.uuid",
@@ -697,17 +265,22 @@ export class API {
             body('user.password').optional().isStrongPassword({
                 minLength: 12
             }), this.allowance(Allowance.Admin, true), this.request(UserCtrl, UserCtrl.edit, [
+                "body.user",
                 "params.uuid",
-                "body.user"
+                "session.cUser",
+                "Domain."
             ]))
         this.router.put("/acc/",
             body('user.username').optional().trim().isAlphanumeric("en-US").isLength({ min: 3 }).escape(),
             body('user.email').optional().trim().isEmail().normalizeEmail(),
             body('user.password').optional().isStrongPassword({
                 minLength: 12
-            }), this.allowance(Allowance.User, true), this.request(UserCtrl, UserCtrl.edit, [
+            }), this.allowance(Allowance.User, true),
+            this.request(UserCtrl, UserCtrl.edit, [
+                "body.user",
                 "params.uuid",
-                "body.user"
+                "session.cUser",
+                "Domain."
             ]))
         this.router.delete("/acc/:uuid", this.allowance(Allowance.Admin, true), this.request(UserCtrl, UserCtrl.delete, [
             "params.uuid",
@@ -849,7 +422,7 @@ export class API {
             "params.coin"
         ]))
         // async setFaucet(id: string, coin: string, addr: string) {
-        this.router.post("/faucet/:id/:coin", this.allowance(Allowance.Admin), this.request(walletCTRL, walletCTRL.getFaucet, [
+        this.router.post("/faucet/:id/:coin", this.allowance(Allowance.Admin), this.request(walletCTRL, walletCTRL.setFaucet, [
             "params.id",
             "params.coin",
             "body.addr"
@@ -882,6 +455,12 @@ export class API {
             this.request(ctrl, ctrl.deleteDomain, [
                 "params.id",
             ]))
+        this.router.put("/site/:id/move", this.allowance(Allowance.Admin),
+            this.request(ctrl, ctrl.moveSite, [
+                "params.id",
+                "body.userid",
+                "session.cUser"
+            ]))
         // async editName(id: string, name: string) {
         this.router.put("/site/:id", this.allowance(Allowance.Admin),
             this.request(ctrl, ctrl.editName, [
@@ -902,25 +481,6 @@ export class API {
             "params.uhash"
         ]))
     }
-
-    // enableCBRoutes() {
-    //     this.router.get("/newMessage", (req, res, next) => {
-    //         let data = JSON.parse(req.query.data)
-    //         req.bus.emit('newMessage', {
-    //             id: req.query.chatid, // id сообщения
-    //             mammothId: data.user._id, // id мамонта
-    //             text: data.message, // отсутствует если есть picture
-    //             picture: "d ntreotq dthcbb nfrjuj ytn",//"название файла с изображением", // отсутствует если есть text
-    //             side: data.user.roles.length > 0 ? "worker" : "mammoth", // отправитель (mammoth или worker)
-    //             login: data.user.email,
-    //             // country: "US",
-    //             domain: data.user.domain,
-    //             promo: data.user.promo,
-    //             createdAt: data.created_at
-    //         })
-    //         res.end()
-    //     })
-    // }
 
     request(ctrl: any, logic: Function, params: string[]) {
         return (async function (req: AuthRequest, res: Response, next: NextFunction) {

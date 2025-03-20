@@ -5,8 +5,15 @@ import { createApiKey, genPassword } from "../../utils"
 import { IntError } from "../../routes/api"
 import { Allowance, DefaultUser, IUser, IUserEdit } from "../../types"
 import { db2interface } from "../../type.conv"
+import { Op } from "sequelize"
+import { RedisCache } from "../../libs/cache"
 
 export class UserController {
+    private cache: RedisCache
+
+    constructor(cache: RedisCache) {
+        this.cache = cache
+    }
 
     // register new user by admin
     async registerFromAdmin(email: string, login: string): Promise<IUser & { password: string }> {
@@ -26,9 +33,9 @@ export class UserController {
     }
     // login - email&password
     async login(login: string, password: string, session: Session, domain: Domain): Promise<IUser> {
-        const user = await User.findOne({
+        const users = await User.findAll({
             where: {
-                username: login
+                username: login,
             },
             include: [
                 { model: Domain, as: "Domain" },
@@ -38,9 +45,18 @@ export class UserController {
             ]
         })
 
-        if (!user || (user.allowance >= Allowance.User && user.DomainId != domain.id)) throw new IntError("Invalid password or login")
+        let user
 
-        if (!bcrypt.compareSync(password, user.password)) throw new IntError("Invalid password or login")
+        for (let u of users) {
+            if (bcrypt.compareSync(password, user.password)) {
+                user = u
+                break
+            }
+        }
+
+        if (!user) throw new IntError("Invalid password or login")
+
+        // if (!user || (user.allowance >= Allowance.User && user.DomainId != domain.id)) throw new IntError("Invalid password or login")
 
         await session.setData({ uuid: user.id })
 
@@ -77,14 +93,15 @@ export class UserController {
             })
             if (!u) ref = undefined
         }
-        let u = await User.findOne({
+        let us = await User.findAll({
             where: {
-                username,
-                DomainId: domain.id,
+                username
             }
         })
 
-        if (u) throw new IntError("User already exists!")
+        for (let u of us) {
+            if (u.DomainId == domain.id || u.allowance < Allowance.User) throw new IntError("User already exists!")
+        }
 
         const user = await User.create({
             username,
@@ -99,8 +116,9 @@ export class UserController {
         return db2interface.user(user)
     }
     // get IUser - uuid|self
-    async get(uuid: string, who?: IUser): Promise<IUser> {
-        let user = await User.findByPk(uuid || who.id, {
+    async get(uuid: string, who?: User): Promise<IUser> {
+
+        let user = await User.findByPk(uuid || who?.id, {
             include: [
                 { model: Domain, as: "Domain" },
                 { model: Promo, as: "Activated" },
@@ -108,30 +126,41 @@ export class UserController {
             ]
         })
 
-        if (!user) return null
+        if (user) {
+            let ref = await User.findAll({
+                where: {
+                    refCode: user.ref
+                }
+            })
 
-        let ref = await User.findAll({
-            where: {
-                refCode: user.ref
-            }
-        })
-
-        user.referals = ref
-
+            user.referals = ref
+        }
         return db2interface.user(user ? user : User.build(DefaultUser), who.allowance < Allowance.User)
     }
     // change email|uname|password
-    async edit(data: IUserEdit, uuid: string): Promise<IUser> {
+    async edit(data: IUserEdit, uuid: string, who: User, domain: Domain): Promise<IUser> {
+
+        if (data?.username) {
+            let us = await User.findAll({
+                where: {
+                    username: data.username
+                }
+            })
+
+            for (let u of us) {
+                if (u.DomainId == domain.id || u.allowance < Allowance.User) throw new IntError("Username is already taken!")
+            }
+        }
 
         await User.update({
-            email: data.email,
-            username: data.username,
-            password: data.password,
+            email: data?.email,
+            username: data?.username,
+            password: data?.password,
         }, {
-            where: { id: uuid }
+            where: { id: uuid || who?.id }
         })
 
-        return this.get(uuid)
+        return await this.get(uuid, who)
     }
     // delete user
     async delete(uuid: string): Promise<boolean> {
@@ -158,16 +187,76 @@ export class UserController {
         return true
     }
 
-    // get list of IUser
-    async getUsers(): Promise<IUser[]> {
-        let users = (await User.findAll({
+    async getUsers(page: number, per_page: number, user: User): Promise<{
+        users: IUser[],
+        count: number,
+        pages: number
+    }> {
+
+        let limit = per_page || 50
+        let offset = (page || 0) * limit
+
+        let opts = {
+            limit,
+            offset,
             include: [
                 { model: Domain, as: "Domain" },
-                { model: Promo, as: "Activated" }
+                { model: Promo, as: "Activated" },
             ]
-        })).map(u => db2interface.user(u))
+        }
 
-        return users
+        switch (user.allowance) {
+            case Allowance.System:
+            case Allowance.Owner: {
+                let max = await User.count()
+                let users = (await User.findAll(opts)).map(e => db2interface.user(e, false))
+
+                return {
+                    users,
+                    count: max,
+                    pages: Math.ceil(max / limit)
+                }
+            }
+            case Allowance.Admin: {
+                let doms = (await Domain.findAll({
+                    where: {
+                        OwnerId: user.id
+                    }, attributes: ["id"]
+                })).map(e => e.id)
+
+                let u = await User.findAndCountAll({
+                    where: {
+                        DomainId: {
+                            [Op.or]: doms
+                        }
+                    },
+                    ...opts
+                })
+                return {
+                    users: u.rows.map(e => db2interface.user(e, false)),
+                    count: u.count,
+                    pages: Math.ceil(u.count / limit)
+                }
+            }
+            case Allowance.Manager: {
+                let promos = (await Promo.findAll({ where: { WorkerId: user.id }, attributes: ["id"] })).map(e => e.id)
+
+                let u = await User.findAndCountAll({
+                    where: {
+                        PromoId: {
+                            [Op.or]: promos
+                        }
+                    },
+                    ...opts
+                })
+                return {
+                    users: u.rows.map(e => db2interface.user(e, false)),
+                    count: u.count,
+                    pages: Math.ceil(u.count / limit)
+                }
+            }
+            default: throw new IntError("Low Allowance!")
+        }
     }
 
     // change apitoken

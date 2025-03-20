@@ -4,8 +4,14 @@ import { Logger } from "./logger"
 import { Domain, Promo, Ticket, User } from "../database/index"
 import { AuthSockRequest } from "../core/controllers/socket"
 import { DefaultUser } from "../types"
+import { Cache, RedisCache } from "./cache"
+import crypto from "node:crypto"
 
 let getPublicKey, verify, sign
+
+const userTTL = 60 // 1 min in seconds
+const sessionTTL = 7 * 24 * 3600 // 7 days in seconds
+const maxAge = sessionTTL * 1000 // 7 days in milliseconds
 
 type Bytes = Uint8Array;
 
@@ -22,6 +28,8 @@ export interface AuthRequest extends Request {
 
 interface JWTdata {
     uuid: string
+    sessionId?: string
+    exp?: number
 }
 
 export class Session {
@@ -34,6 +42,9 @@ export class Session {
     public isAuth: boolean = false
     private authToken: string = ""
     public cUser: User
+    public cache: RedisCache | Cache
+    private sessionId: string
+    public isApi: boolean
 
     get authtoken() {
         return this.authToken
@@ -49,25 +60,31 @@ export class Session {
         await this.sign()
     }
 
-
-
-    constructor(pk: string, name: string) {
+    constructor(pk: string, name: string, cache) {
         if (!pk) {
             throw Error("No private key for session")
         }
 
         this.name = name
 
+        this.cache = cache
+        this.sessionId = crypto.randomBytes(16).toString("hex")
+
         this.privateKey = Buffer.from(pk, "hex")
         this.publicKey = getPublicKey(this.privateKey)
     }
 
     async sign() {
+        this._data.sessionId = this.sessionId
+        this._data.exp = this._data.exp ? this._data.exp : (sessionTTL + Math.floor(Date.now() / 1000))
+
         const data = Buffer.from(JSON.stringify(this._data)).toString("base64")
         const hash = sha256(JSON.stringify(this._data))
         let sig = Buffer.from((await sign(hash, this.privateKey)).toCompactRawBytes()).toString("base64")
         this.authToken = `${data}.${sig}`
-        this.res.cookie(this.name, this.authToken)
+        this.res.cookie(this.name, this.authToken, { maxAge })
+
+        await this.cache.set(`session:${this._data.sessionId}:user:${this._data.uuid}`, this._data, this._data.exp - Math.floor(Date.now() / 1000))
     }
 
     async verify(token: string): Promise<boolean> {
@@ -76,16 +93,37 @@ export class Session {
         try {
             await verify(sig.toString("hex"), hash, this.publicKey)
             this._data = JSON.parse(data.toString())
+
+            if (this._data.exp && this._data.exp < Math.floor(Date.now() / 1000)) {
+                return false
+            }
+
+            const cachedData = await this.cache.get(`session:${this._data.sessionId}:user:${this._data.uuid}`)
+            if (!cachedData) {
+                return false
+            }
+
+            this._data = cachedData
+            this.sessionId = this._data.sessionId
+
             return true
         } catch (e) {
             return false
         }
     }
+
+    async toCache(data: any) {
+        this.cache.set(`user:${this._data.uuid}`, data, userTTL)
+    }
+
+    async fromCache() {
+        return await this.cache.get(`user:${this._data.uuid}`)
+    }
 }
-export function session(pk: string, name: string, logger: Logger) {
+export function session(pk: string, name: string, logger: Logger, cache: RedisCache | Cache) {
     return async function express(req: AuthSockRequest, res: Response, next: NextFunction) {
 
-        const sess = new Session(pk, name)
+        const sess = new Session(pk, name, cache)
 
         sess.res = res
 
@@ -98,24 +136,20 @@ export function session(pk: string, name: string, logger: Logger) {
         const include = {
             include: [
                 { model: Domain, as: "Domain" },
-                { model: Promo, as: "Activated" },
-                { model: User, as: "referals" },
-                { model: Ticket, as: "Tickets" }
             ]
         }
 
         if (token && token[0] == APIKEYLEAD) {
             let u
             try {
-                u = (await User.findOne({
+                u = await User.findOne({
                     where: {
                         apitoken: token,
                         DomainId: req.Domain.id
                     },
                     ...include
-                })).dataValues
+                })
             } catch (error) {
-                sess.cUser = User.build(DefaultUser)
                 logger.err(error.message)
             }
 
@@ -126,12 +160,13 @@ export function session(pk: string, name: string, logger: Logger) {
 
             sess.cUser = u
             sess.isAuth = true
+            sess.isApi = true
 
             return next()
         }
 
-        if (!token || !await sess.verify(token)) {
 
+        if (!token || !await sess.verify(token)) {
             sess.cUser = User.build(DefaultUser)
             return next()
         }
@@ -145,6 +180,7 @@ export function session(pk: string, name: string, logger: Logger) {
             sess.cUser = u
             sess.isAuth = true
         } catch (error) {
+
             sess.cUser = User.build(DefaultUser)
             logger.err(error.message)
         }
@@ -153,7 +189,7 @@ export function session(pk: string, name: string, logger: Logger) {
     }
 }
 
-export function socketSession(pk: string, name: string, logger: Logger) {
+export function socketSession(pk: string, name: string, logger: Logger, cache: RedisCache | Cache) {
     return async (socket, next) => {
 
         const token: string = socket.handshake.auth.token
@@ -169,7 +205,7 @@ export function socketSession(pk: string, name: string, logger: Logger) {
 
         if (!token) return next(new Error("fucking beach"))
 
-        const sess = new Session(pk, name)
+        const sess = new Session(pk, name, cache)
 
         sess.res = socket
 
