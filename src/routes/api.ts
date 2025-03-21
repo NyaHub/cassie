@@ -10,7 +10,7 @@ import { join } from "node:path"
 import { rootpath } from "../root"
 import { body, matchedData, query, validationResult } from "express-validator"
 import { WalletCtrl } from "../core/controllers/wallet"
-import { CFCtrl } from "../core/controllers/domain"
+import { CFCtrl, CloudflareMonitor } from "../core/controllers/domain"
 import EventEmitter from "node:events"
 import { ChatCtrl } from "../core/controllers/chat"
 import { Allowance } from "../types"
@@ -41,7 +41,8 @@ export class API {
         this.event = event
         this.cache = cache
 
-        // DomainCron(logger.getLogger("DomainCron")) // следит за состоянием доменов
+        let dmonit = new CloudflareMonitor(this.logger.getLogger("CFMonitor"), event)
+        dmonit.startMonitoring()
 
         this.enableAccRoutes()
         this.enableCoreRoutes(core, coingecko)

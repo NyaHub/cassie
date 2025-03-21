@@ -139,8 +139,6 @@ export function session(pk: string, name: string, logger: Logger, cache: RedisCa
             ]
         }
 
-        console.log(req.Domain)
-
         if (token && token[0] == APIKEYLEAD) {
             let u
             try {

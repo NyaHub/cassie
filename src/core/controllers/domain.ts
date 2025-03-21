@@ -50,13 +50,28 @@ export class CFCtrl {
     }
 
     async deleteDomain(id: string) {
-        let domain = await Domain.findByPk(id, { include: { model: CFAcc, as: "Account" } })
+        let domain = await Domain.findByPk(id)
 
         if (!domain) throw new IntError("Domain not found!")
+        if (!domain.AccountId) {
+            await domain.destroy()
+            return true
+        }
 
-        await this.manager.deleteDomainZone(domain.Account, domain.zoneId)
+        let acc = await CFAcc.findByPk(domain.AccountId)
 
-        return true
+        if (!acc) {
+            this.logger.err(`Domain ${domain.id}, account not found!`)
+            throw new IntError("Account Error")
+        }
+
+        let r = await this.manager.deleteDomainZone(acc, domain.zoneId)
+
+        if (r) {
+            await domain.destroy()
+        }
+
+        return r
     }
 
     async get(id: string) {
@@ -170,7 +185,8 @@ export class CloudflareManager {
                         zoneId = zoneInfo.zoneId
                         nameServers = zoneInfo.nameServers
 
-                        await CloudflareAPI.addWildcardRecord(account, zoneInfo.zoneId)
+                        await CloudflareAPI.addRecord(domain, account, zoneInfo.zoneId)
+                        await CloudflareAPI.addRecord(`admin.${domain}`, account, zoneInfo.zoneId)
 
                         break
                     }
@@ -196,7 +212,7 @@ export class CloudflareManager {
     }
 
     async deleteDomainZone(account: CloudflareAccount, zoneId: string): Promise<boolean> {
-        return CloudflareAPI.deleteDomainZone(account, zoneId)
+        return await CloudflareAPI.deleteDomainZone(account, zoneId)
     }
 }
 

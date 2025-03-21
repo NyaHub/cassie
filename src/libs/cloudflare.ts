@@ -3,7 +3,12 @@ import { EventEmitter } from 'events'
 import { CFAcc, Domain } from '../database'
 import { Logger } from './logger'
 import { DomainStatus } from '../types'
+import http from "node:http"
 
+let ip = ""
+axios.get("http://ifconfig.me", {
+    httpAgent: new http.Agent({ family: 4 })
+}).then(e => ip = e.data).catch(e => { console.log(e.message) })
 
 export interface CloudflareAccount {
     email: string
@@ -57,18 +62,18 @@ export class CloudflareAPI {
                 }
             }
         } catch (error) {
-            console.error(`Failed to add domain ${domain} to account ${account.email}:`, error)
+            console.error(`Failed to add domain ${domain} to account ${account.email}:`, error?.response?.data)
         }
         return null
     }
 
 
-    static async addWildcardRecord(account: CloudflareAccount, zoneId: string): Promise<void> {
+    static async addRecord(record: string, account: CloudflareAccount, zoneId: string): Promise<void> {
         try {
             const response = await axios.post(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`, {
                 type: 'A',
-                name: '*',
-                content: '192.0.2.1',
+                name: record,
+                content: ip,
                 ttl: 1,
                 proxied: true,
             }, {
@@ -79,10 +84,10 @@ export class CloudflareAPI {
             })
 
             if (response.data.success) {
-                console.log(`Wildcard record for zone ${zoneId} added successfully`)
+                console.log(`Record "${record}" for zone ${zoneId} added successfully`)
             }
         } catch (error) {
-            console.error(`Failed to add wildcard record for zone ${zoneId}:`, error)
+            console.error(`Failed to add "${record}" record for zone ${zoneId}:`, error?.response?.data)
         }
     }
 
@@ -91,17 +96,17 @@ export class CloudflareAPI {
         try {
             const response = await axios.delete(`https://api.cloudflare.com/client/v4/zones/${zoneId}`, {
                 headers: {
-                    'X-Auth-Email': account.email,
-                    'X-Auth-Key': account.apiKey,
+                    'X-Auth-Email': account?.email,
+                    'X-Auth-Key': account?.apiKey,
                 },
             })
 
             if (response.data.success) {
-                console.log(`Zone ${zoneId} deleted successfully from account ${account.email}`)
+                console.log(`Zone ${zoneId} deleted successfully from account ${account?.email}`)
                 return true
             }
         } catch (error) {
-            console.error(`Failed to delete zone ${zoneId} from account ${account.email}:`, error)
+            console.error(`Failed to delete zone ${zoneId} from account ${account?.email}:`, error?.response?.data)
         }
         return false
     }

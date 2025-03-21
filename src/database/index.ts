@@ -124,7 +124,6 @@ export class CFAcc extends Model {
     declare password: string
     declare apiKey: string
     declare accountId: string
-    declare count: number
 
     declare Domains: NonAttribute<Domain[]>
 
